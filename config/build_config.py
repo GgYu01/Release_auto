@@ -13,7 +13,7 @@ class BuildConfig:
     enable_nebula: bool = True
     enable_tee: bool = False
     build_commands: List[BuildModule] = field(default_factory=lambda: BuildConfig.default_build_commands())
-    tag_version_identifier: str = '20241218'
+    tag_version_identifier: str = '20241218_01'
     cr_number: str = "alps0001"
     commit_title: str = "new feature"
     commit_description: str = BuildConfig.default_commit_description()
@@ -24,17 +24,14 @@ class BuildConfig:
             BuildModule(
                 name="nebula-sdk",
                 commands="""
-rm -rf out
 cd ~/nebula/
 source scripts/env.sh
 make nebula-sdk
-make install
 """
             ),
             BuildModule(
                 name="nebula",
                 commands="""
-rm -rf out
 cd ~/grpower/
 source scripts/env.sh
 gr-nebula.py build
@@ -44,7 +41,6 @@ gr-nebula.py build
                 name="tee",
                 commands="""
 make tee
-make install
 """
             ),
         ]
@@ -54,7 +50,6 @@ make install
         return """
 1.fix audio
 2.fix reboot
-3.fix suspend
 """
 
 BUILD_CONFIG = BuildConfig()
