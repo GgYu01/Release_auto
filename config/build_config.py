@@ -24,15 +24,12 @@ class BuildConfig:
             BuildModule(
                 name="nebula-sdk",
                 commands="""
-cd ~/nebula/
-source scripts/env.sh
 make nebula-sdk
 """
             ),
             BuildModule(
                 name="nebula",
                 commands="""
-cd ~/grpower/
 source scripts/env.sh
 gr-nebula.py build
 """
