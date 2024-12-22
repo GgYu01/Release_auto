@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import Dict, List
+from typing import Dict, List, Optional
 from pathlib import Path
-from functools import lru_cache
 import threading
+from dataclasses import dataclass, field
 
 @dataclass
 class SingletonMeta(type):
@@ -16,83 +16,28 @@ class SingletonMeta(type):
                 cls._instances[cls] = instance
             return cls._instances[cls]
 
-class BaseRepositoryConfig(ABC, metaclass=SingletonMeta):
+@dataclass
+class BaseRepositoryConfig:
+    repo_name: str
+    repo_path: Path
+    parent_repo: Optional[str] = None
+    module_name: Optional[str] = None
+    is_independent: bool = False
+    manifest_path: Optional[Path] = None
+    tag_prefix: str = ""
+    generate_patch: bool = False
+    current_commit: Optional[str] = None
+    latest_tag: str = ""
+    second_latest_tag: str = ""
+    analyze_commit: bool = True
+    branch: str = ""
+    patch_strict_mode: bool = False
+    no_commit_analysis: bool = False
+    git_remotes: Dict[str, str] = field(default_factory=dict)
+    git_push_template: str = ""
 
-    @abstractmethod
     def load_config(self):
         pass
-
-    @property
-    @abstractmethod
-    def repo_name(self) -> str:
-        pass
-
-    @property
-    @abstractmethod
-    def repo_path(self) -> Path:
-        pass
-
-    @property
-    @abstractmethod
-    def parent_repo(self) -> str:
-        pass
-
-    @property
-    @abstractmethod
-    def module_name(self) -> str:
-        pass
-
-    @property
-    @abstractmethod
-    def is_independent(self) -> bool:
-        pass
-
-    @property
-    @abstractmethod
-    def manifest_path(self) -> Path:
-        pass
-
-    @property
-    @abstractmethod
-    def tag_prefix(self) -> str:
-        pass
-
-    @property
-    @abstractmethod
-    def generate_patch(self) -> bool:
-        pass
-
-    @property
-    @abstractmethod
-    def current_commit(self) -> str:
-        pass
-
-    @property
-    @abstractmethod
-    def latest_tag(self) -> str:
-        pass
-
-    @property
-    @abstractmethod
-    def second_latest_tag(self) -> str:
-        pass
-
-    @property
-    @abstractmethod
-    def branch(self) -> str:
-        pass
-
-    @property
-    @abstractmethod
-    def patch_strict_mode(self) -> bool:
-        pass
-
-    @property
-    @abstractmethod
-    def no_commit_analysis(self) -> bool:
-        pass
-
-    # Other abstract properties and methods as needed
 
 @dataclass(frozen=True)
 class NebulaRepoConfig(BaseRepositoryConfig):
@@ -114,6 +59,10 @@ class NebulaRepoConfig(BaseRepositoryConfig):
 
     def load_config(self):
         pass
+
+    @property
+    def git_push_template(self) -> str:
+        return f"HEAD:refs/for/{self.branch}"
 
 @dataclass(frozen=True)
 class YoctoRepoConfig(BaseRepositoryConfig):
