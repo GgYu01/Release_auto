@@ -17,6 +17,7 @@ class BuildConfig:
     tag_version_identifier: str = '20241218_01'
     cr_number: str = "alps0001"
     commit_title: str = "new feature"
+    commit_type: str = "default"
     commit_description: str = field(default_factory=lambda: BuildConfig.default_commit_description())
 
     @staticmethod

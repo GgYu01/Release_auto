@@ -1,4 +1,3 @@
-from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
 from pathlib import Path
 import threading
@@ -24,6 +23,7 @@ class BaseRepositoryConfig:
     module_name: Optional[str] = None
     is_independent: bool = False
     manifest_path: Optional[Path] = None
+    manifest_type: Optional[str] = ""
     tag_prefix: str = ""
     generate_patch: bool = False
     current_commit: Optional[str] = None
@@ -36,16 +36,24 @@ class BaseRepositoryConfig:
     git_remotes: Dict[str, str] = field(default_factory=dict)
     git_push_template: str = ""
 
+    def __post_init__(self):
+        if not self.git_push_template:
+            self.git_push_template = self.generate_git_push_template()
+
+    def generate_git_push_template(self):
+        return ""
+
     def load_config(self):
         pass
 
-@dataclass(frozen=True)
+@dataclass
 class NebulaRepoConfig(BaseRepositoryConfig):
     repo_name: str = "nebula"
     repo_path: Path = Path("/home/nebula/grpower/workspace/nebula")
     parent_repo: str = "nebula"
     is_independent: bool = False
     manifest_path: Path = Path("/home/nebula/grpower/workspace/nebula/manifest/cci/nebula-main")
+    manifest_type: str = "jiri"
     tag_prefix: str = "release-spm.mt8678_mt8676_"
     generate_patch: bool = False
     analyze_commit: bool = True
@@ -60,17 +68,17 @@ class NebulaRepoConfig(BaseRepositoryConfig):
     def load_config(self):
         pass
 
-    @property
     def git_push_template(self) -> str:
         return f"HEAD:refs/for/{self.branch}"
 
-@dataclass(frozen=True)
+@dataclass
 class YoctoRepoConfig(BaseRepositoryConfig):
     repo_name: str = "yocto"
     repo_path: Path = Path("/home/nebula/yocto")
     parent_repo: str = "yocto"
     is_independent: bool = False
     manifest_path: Path = Path("/home/nebula/yocto/.repo/manifests/mt8678/grt/1114/yocto.xml")
+    manifest_type: str = "repo"
     tag_prefix: str = "release-spm.mt8678_"
     generate_patch: bool = True
     analyze_commit: bool = True
@@ -82,7 +90,7 @@ class YoctoRepoConfig(BaseRepositoryConfig):
     def load_config(self):
         pass
 
-@dataclass(frozen=True)
+@dataclass
 class GrtRepoConfig(BaseRepositoryConfig):
     repo_name: str = "grt"
     repo_path: Path = Path("/home/nebula/grt")
