@@ -1,10 +1,14 @@
 from loguru import logger
+from config.logging_config import LoggingConfig
 
 class Logger:
-    def __init__(self, name):
+    def __init__(self, name, logging_config=None):
         self.name = name
+        if logging_config is None:
+            logging_config = LoggingConfig()
+        self.logging_config = logging_config
         logger.remove()
-        logger.add("release.log", format="{time:YYYY-MM-DD HH:mm:ss} {level} {name} {function} {file}:{line} {message}")
+        logger.add(logging_config.log_file, format=logging_config.log_format, level=logging_config.log_level, rotation=logging_config.log_rotation, retention=logging_config.log_retention, compression=logging_config.log_compression, catch=True)
 
     def debug(self, msg, *args, **kwargs):
         logger.bind(name=self.name).opt(depth=1, exception=False).debug(msg, *args, **kwargs)
