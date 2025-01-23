@@ -1,7 +1,7 @@
+import logging
 from config.schemas import RepoConfig, AllReposConfig
-from utils.rich_logger import RichLogger
 
-logger = RichLogger("repos_config")
+logger = logging.getLogger(__name__)
 
 grpower_config = RepoConfig(
     repo_name="grpower",
@@ -71,9 +71,9 @@ all_repos_config = AllReposConfig(
     repo_configs={
         "grpower": grpower_config,
         "grt": grt_config,
-        "grt_be": grt_be_config,
-        "nebula": nebula_config,
-        "yocto": yocto_config,
-        "alps": alps_config,
+        # "grt_be": grt_be_config,
+        # "nebula": nebula_config,
+        # "yocto": yocto_config,
+        # "alps": alps_config,
     }
 )

@@ -1,11 +1,13 @@
 import os
-from utils.rich_logger import RichLogger
+from utils.rich_logger import Logger
 
-logger = RichLogger("file_utils")
+logger = Logger("file_utils")
 
 def construct_path(base_path, relative_path):
     try:
-        return os.path.abspath(os.path.join(base_path, relative_path))
+        expanded_base_path = os.path.expanduser(base_path)
+        return os.path.join(expanded_base_path, relative_path)
+        # return os.path.abspath(os.path.join(base_path, relative_path))
     except Exception as e:
         logger.error(f"Error constructing path: {e}")
         return None
