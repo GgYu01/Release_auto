@@ -26,8 +26,6 @@ def main():
             logger.info(f"Branch Info: {git_repo.branch_info}")
             logger.info(f"Push Template: {git_repo.push_template}")
             logger.info("-" * 40)
-        
-        logger.save_html()
 
     except Exception as e:
         logger.error(f"An error occurred in main: {e}")
