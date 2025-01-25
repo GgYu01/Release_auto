@@ -135,26 +135,28 @@
 
 
 
-好的，请你把我;;;;;;之间的内容转换为专业全英文的prompt，我将把你的prompt用于指导其他的LLM生成代码，你并不需要生产任何代码，我只需要你提供prompt，所有的prompt要连续，不间断的放在一个代码块里，方便我查看。
+请你把我;;;;;;之间的内容转换为专业全英文的prompt，我将把你的prompt用于指导其他的LLM生成代码，你并不需要生产任何代码，我只需要你提供prompt，所有的prompt要连续，不间断的放在一个代码块里，方便我查看。
 ;;;;;;
 请使用简体中文回答、说明、介绍。
 实际代码中的任何内容都必须全部是专业的英文。
-我修改了日志记录方式，不再使用rich了。
-我执行代码的输出信息如下，看起来我以前调用的日志记录方法，import的内容可能需要改变，请你做出对应的修改，谢谢。
-nebula@ab2c1af07fa4:~/Release_auto $ python3 release.py 
-Traceback (most recent call last):
-  File "release.py", line 1, in <module>
-    from config.repos_config import all_repos_config
-  File "/home/nebula/Release_auto/config/repos_config.py", line 2, in <module>
-    from utils.rich_logger import RichLogger
-ImportError: cannot import name 'RichLogger' from 'utils.rich_logger' (/home/nebula/Release_auto/utils/rich_logger.py)
 
-;;;;;;
+我需要你基于我已有的功能完成新的功能
+已有功能：
+本项目是一个用于管理和维护多个软件仓库的自动化工具。它支持 Git、Jiri 和 Repo 三种类型的仓库，可以自动化分析仓库的提交、生成补丁以及其它仓库管理操作。
 
-请使用简体中文回答、说明、介绍。
-实际代码中的任何内容都必须全部是专业的英文。
-我请你修改utils/rich_logger.py，我不想在终端输出信息，所有信息不要输出到终端，而是记录在指定的日志文件里面，请保持日志文件格式、编码格式兼容Windows和linux，日志记录、写入必须改用Loguru实现。
-我发现每行日志有类似两种不同输出行号的方式，我任务只需要一种，请你解决这个问题。
+config/logging_config.py、config/repos_config.py、config/schemas.py、core/repo_manager.py、core/repo_updater.py、utils/file_utils.py、utils/rich_logger.py、utils/tag_utils.py
+
+我需要你完成的新功能是：我希望能够通过一个 Python 配置文件来定义全局参数，例如要打的 TAG 版本标识、分支、描述信息、CR、title、commit message 格式、是否需要执行 nebula-sdk、nebula、TEE 的更新等，以便在 release 过程中使用这些参数。
+所有实现的功能尽可能使用跨平台的库，而不是调用终端命令。
+第一步，对于parent是alps 和 yocto 的仓库，需要依次执行：git fetch --all ,git checkout -f remotes/m/master,git reset --hard remotes/m/master,git clean -fdx这四步命令。对于parent是nebula的仓库，在nebula代码库的路径下执行mkdir -p ./.jiri_root/bin，rm -f .jiri_manifest .config .prebuilts_config，~/grpower/bin/jiri -j=2 import -remote-branch="master" "cci/nebula-main" ssh://gerrit:29418/manifest，~/grpower/bin/jiri -j=8 runp git checkout -f JIRI_HEAD --detach ，~/grpower/bin/jiri -j=2 update -gc -autoupdate=false -run-hooks=false --attempts=10 --force-autoupdate=true --rebase-all=false --rebase-tracked=false --rebase-untracked=false --show-progress=true --color=auto ,~/grpower/bin/jiri -j=8 runp "git remote get-url origin | sed 's/gerrit/gerrit-review/' | xargs git remote set-url --push origin" ，然后分析是否有特殊的子git仓库需要切换分支，若有则在对应子git仓库git checkout -f 特殊分支名，git reset --hard 远程特殊分支名 ，git pull即可。
+对于parent是grpower 的仓库，执行git checkout -f 本地分支名 ，git reset --hard 远端分支名 和git pull。
+对于parent是grt和grt_be的仓库，执行git checkout -f 本地分支名 ，git reset --hard 远端分支名 ，git clean -fdx和git pull。
+
+当第一步sync基础环境做好后，我需要进行第二步：设计对所有全部子git仓库打tag的功能，tag全名按照本仓库的tag前缀+共同的版本标识，比如2025_0125_01，我只需要定义版本标识。
+第三步，tag成功在本地打后，需要push到远端gerrit上面。
+
+其他暂时无需做，第二步和第三步需要加enable和disable的开关，默认情况下只会打印类似  准备在 仓库名  绝对路径 commit id为多少 HEAD的commit message信息 打 拼接后的tag名的详细日志，后续实操执行不会默认执行，方便我调试。
+
 我对代码的规范要求如下：
 1. 代码采用高度模块化设计，支持后续扩展和维护。
 2. 不考虑安全性、性能和资源占用，只注重可配置性和灵活性。
@@ -165,5 +167,4 @@ ImportError: cannot import name 'RichLogger' from 'utils.rich_logger' (/home/neb
 7. 模块化结构需利用Python高级特性（装饰器、类、插件架构、扩展模块、上下文管理器、依赖注入等）。
 8. 遵循最佳实践，确保代码清晰、简洁、健壮，且具备灵活的包结构。
 
-我发现实际日志中输出的所有行号信息都是utils/rich_logger.py中的行号，而不是实际代码中的行号，请修正这个错误。
-请详细说明一共有多少种可以供我使用的在python中记录日志文件的库？分别是什么？
+;;;;;;
