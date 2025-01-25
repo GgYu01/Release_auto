@@ -1,6 +1,6 @@
 from config.repos_config import all_repos_config
 from core.repo_manager import RepoManager
-from utils.rich_logger import Logger
+from utils.custom_logger import Logger
 
 logger = Logger("release")
 

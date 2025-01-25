@@ -1,7 +1,7 @@
 import xml.etree.ElementTree as ET
 from config.schemas import GitRepoInfo, RepoConfig, AllReposConfig
 from utils.file_utils import construct_path
-from utils.rich_logger import Logger
+from utils.custom_logger import Logger
 from core.repo_updater import RepoPropertyUpdater
 
 logger = Logger("repo_manager")

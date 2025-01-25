@@ -1,5 +1,5 @@
 import os
-from utils.rich_logger import Logger
+from utils.custom_logger import Logger
 
 logger = Logger("file_utils")
 

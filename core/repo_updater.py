@@ -1,7 +1,7 @@
 from dataclasses import replace
 from typing import Optional, List, Dict
 from config.schemas import GitRepoInfo, RepoConfig, AllReposConfig
-from utils.rich_logger import Logger
+from utils.custom_logger import Logger
 
 logger = Logger("repo_updater")
 
