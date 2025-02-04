@@ -2,7 +2,7 @@
 ;;;;;;
 你的回答中介绍和说明请使用简体中文，代码中的任何内容都必须全部是专业的英文。
 
-我有一个现成的代码项目，已经完成了初步设计，已经可以把不同类型代码库，通过manifest文件解析为独立的子git仓库集，然后按照开发者预期的分类情况，按照特性把一些信息填入每个仓库的数据结构记录的参数中，已有功能涉及的代码文件：config/logging_config.py、config/repos_config.py、config/schemas.py、core/repo_manager.py、core/repo_updater.py、utils/file_utils.py、utils/rich_logger.py、utils/tag_utils.py，你需要理解这些已有的文件设计后，在此基础上添加新的功能。
+我有一个现成的代码项目，已经完成了初步设计，已经可以把不同类型代码库，通过manifest文件解析为独立的子git仓库集，然后按照开发者预期的分类情况，按照特性把一些信息填入每个仓库的数据结构记录的参数中，已有功能涉及的代码文件：config/logging_config.py、config/repos_config.py、config/schemas.py、core/repo_manager.py、core/repo_updater.py、utils/file_utils.py、utils/custom_logger.py、utils/tag_utils.py，你需要理解这些已有的文件设计后，在此基础上添加新的功能。
 
 ## 代码项目第二步功能详细设计规划
 
