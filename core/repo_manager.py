@@ -41,9 +41,11 @@ class RepoManager:
                     parent_repo=repo_config.repo_name,
                     analyze_commit=repo_config.default_analyze_commit,
                     generate_patch=repo_config.default_generate_patch,
+                    special_branch_repos=repo_config.special_branch_repos,
                 )
                 if repo_name in repo_config.special_branch_repos:
-                    git_repo_info.remote_branch = repo_config.special_branch_repos[repo_name]
+                    git_repo_info.remote_branch = repo_config.special_branch_repos[repo_name].get("remote_branch", "origin/master")
+                    git_repo_info.local_branch = repo_config.special_branch_repos[repo_name].get("local_branch", "master")
 
                 repo_config.git_repos.append(git_repo_info)
                 logger.info(f"Added GitRepoInfo for {repo_name} from jiri manifest")
@@ -75,9 +77,11 @@ class RepoManager:
                     parent_repo=repo_config.repo_name,
                     analyze_commit=repo_config.default_analyze_commit,
                     generate_patch=repo_config.default_generate_patch,
+                    special_branch_repos=repo_config.special_branch_repos,
                 )
                 if repo_name in repo_config.special_branch_repos:
-                    git_repo_info.remote_branch = repo_config.special_branch_repos[repo_name]
+                    git_repo_info.remote_branch = repo_config.special_branch_repos[repo_name].get("remote_branch", "origin/master")
+                    git_repo_info.local_branch = repo_config.special_branch_repos[repo_name].get("local_branch", "master")
 
                 repo_config.git_repos.append(git_repo_info)
                 logger.info(f"Added GitRepoInfo for {repo_name} from repo manifest")
@@ -92,11 +96,14 @@ class RepoManager:
                         repo_name=repo_config.repo_name,
                         repo_parent=repo_config.repo_name,
                         path=repo_config.path,
+                        repo_path=repo_config.path,
                         repo_type="git",
                         tag_prefix=repo_config.default_tag_prefix,
                         parent_repo=repo_config.repo_name,
                         analyze_commit=repo_config.default_analyze_commit,
                         generate_patch=repo_config.default_generate_patch,
+                        special_branch_repos=repo_config.special_branch_repos,
+                        local_branch="master",
                     )
                     repo_config.git_repos.append(git_repo_info)
                     logger.info(f"Added GitRepoInfo for {repo_config.repo_name}")

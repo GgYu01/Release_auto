@@ -1,6 +1,9 @@
 from config.repos_config import all_repos_config
 from core.repo_manager import RepoManager
 from utils.custom_logger import Logger
+from utils.command_executor import CommandExecutor
+from core.sync.repo_synchronizer import RepoSynchronizer
+from config.sync_config import sync_strategies_config
 
 logger = Logger("release")
 
@@ -9,6 +12,10 @@ def main():
     try:
         repo_manager = RepoManager(all_repos_config)
         repo_manager.initialize_git_repos()
+
+        command_executor = CommandExecutor()
+        repo_synchronizer = RepoSynchronizer(all_repos_config, sync_strategies_config, command_executor)
+        repo_synchronizer.sync_repos()
 
         for git_repo in all_repos_config.all_git_repos():
             logger.info(f"Git Repo Name: {git_repo.repo_name}")
