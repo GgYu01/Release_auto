@@ -14,6 +14,9 @@ class ActionExecutor:
             params["path"] = git_repo_info.repo_path + "/" + params["path"]
         if "cwd" in params: # For git commands
             params["cwd"] = git_repo_info.path
+        else:
+            params["cwd"] = git_repo_info.repo_path
+
         if action.action_type == "jiri_command":
             if params.get("command") == "runp":
                 if params.get("args")[0] == "git":
