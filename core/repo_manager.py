@@ -38,6 +38,7 @@ class RepoManager:
                     tag_prefix=repo_config.default_tag_prefix,
                     remote_name=None,
                     remote_branch=None,
+                    local_branch=None,
                     parent_repo=repo_config.repo_name,
                     analyze_commit=repo_config.default_analyze_commit,
                     generate_patch=repo_config.default_generate_patch,
@@ -74,6 +75,7 @@ class RepoManager:
                     tag_prefix=repo_config.default_tag_prefix,
                     remote_name=None,
                     remote_branch=None,
+                    local_branch=None,
                     parent_repo=repo_config.repo_name,
                     analyze_commit=repo_config.default_analyze_commit,
                     generate_patch=repo_config.default_generate_patch,
@@ -103,7 +105,9 @@ class RepoManager:
                         analyze_commit=repo_config.default_analyze_commit,
                         generate_patch=repo_config.default_generate_patch,
                         special_branch_repos=repo_config.special_branch_repos,
-                        local_branch="master",
+                        local_branch=repo_config.local_branch if repo_config.local_branch else repo_config.remote_branch,
+                        remote_name=repo_config.remote_name,
+                        remote_branch=repo_config.remote_branch,
                     )
                     repo_config.git_repos.append(git_repo_info)
                     logger.info(f"Added GitRepoInfo for {repo_config.repo_name}")

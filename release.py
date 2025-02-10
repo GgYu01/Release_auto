@@ -25,6 +25,7 @@ def main():
             logger.info(f"Tag Prefix: {git_repo.tag_prefix}")
             logger.info(f"Remote Name: {git_repo.remote_name}")
             logger.info(f"Remote Branch: {git_repo.remote_branch}")
+            logger.info(f"Local Branch: {git_repo.local_branch}")
             logger.info(f"Commit Analyses: {git_repo.commit_analyses}")
             logger.info(f"Newest Version: {git_repo.newest_version}")
             logger.info(f"Next Newest Version: {git_repo.next_newest_version}")

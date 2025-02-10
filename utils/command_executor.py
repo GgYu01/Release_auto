@@ -23,7 +23,7 @@ class CommandExecutor:
 
     def execute_git_command(self, params: Dict):
         command = ["git"] + [params.get("command")] + params.get("args", [])
-        cwd = params.get("cwd", None)  # Optional working directory
+        cwd = params.get("cwd", None)
         self.logger.info(f"Executing git command: {command} in {cwd or 'default directory'}")
         result = subprocess.run(command, capture_output=True, text=True, cwd=cwd, check=False)
         if result.returncode != 0:
@@ -53,7 +53,7 @@ class CommandExecutor:
     def execute_rm_command(self, params: Dict):
         path = params.get("path")
         self.logger.info(f"Executing rm command: {path}")
-        result = subprocess.run(["rm", "-rf", path], capture_output=True, text=True, check=False)  # Use -rf for recursive removal
+        result = subprocess.run(["rm", "-rf", path], capture_output=True, text=True, check=False)
         if result.returncode != 0:
             self.logger.error(f"rm command failed: {result.stderr}")
             raise subprocess.CalledProcessError(result.returncode, ["rm","-rf", path], result.stderr)

@@ -16,13 +16,18 @@ class RepoPropertyUpdater:
         branch_info = repo_config.all_branches
         if git_repo.repo_name in repo_config.special_branch_repos:
             branch_info = repo_config.special_branch_repos[git_repo.repo_name]
-            
+
+        if git_repo.local_branch is None:
+            git_repo = replace(git_repo, local_branch=repo_config.remote_branch)
+
         return replace(
             git_repo,
             tag_prefix=repo_config.default_tag_prefix,
             analyze_commit=repo_config.default_analyze_commit,
             generate_patch=repo_config.default_generate_patch,
-            branch_info=branch_info
+            branch_info=branch_info,
+            remote_name=repo_config.remote_name,
+            remote_branch=repo_config.remote_branch
         )
 
     def update_all_repos(self) -> None:

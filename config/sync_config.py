@@ -30,8 +30,8 @@ sync_strategies_config = AllSyncConfigs(
             strategy_name="grpower_sync",
             parent_types=["grpower"],
             sync_actions=[
-                # SyncAction(action_type="git_command", action_params={"command": "checkout", "args": ["-f", "{local_branch}"]}),
-                # SyncAction(action_type="git_command", action_params={"command": "reset", "args": ["--hard", "{remote_branch}"]}),
+                SyncAction(action_type="git_command", action_params={"command": "checkout", "args": ["-f", "{local_branch}"]}),
+                SyncAction(action_type="git_command", action_params={"command": "reset", "args": ["--hard", "{remote_branch}"]}),
                 SyncAction(action_type="git_command", action_params={"command": "pull", "args": []}),
             ],
         ),
@@ -39,9 +39,9 @@ sync_strategies_config = AllSyncConfigs(
             strategy_name="grt_grt_be_sync",
             parent_types=["grt", "grt_be"],
             sync_actions=[
-                # SyncAction(action_type="git_command", action_params={"command": "checkout", "args": ["-f", "{local_branch}"]}),
-                # SyncAction(action_type="git_command", action_params={"command": "reset", "args": ["--hard", "{remote_branch}"]}),
-                # SyncAction(action_type="git_command", action_params={"command": "clean", "args": ["-fdx"]}),
+                SyncAction(action_type="git_command", action_params={"command": "checkout", "args": ["-f", "{local_branch}"]}),
+                SyncAction(action_type="git_command", action_params={"command": "reset", "args": ["--hard", "{remote_branch}"]}),
+                SyncAction(action_type="git_command", action_params={"command": "clean", "args": ["-fdx"]}),
                 SyncAction(action_type="git_command", action_params={"command": "pull", "args": []}),
             ],
         ),

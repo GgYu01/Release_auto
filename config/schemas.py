@@ -28,6 +28,9 @@ class RepoConfig:
     repo_type: str
     path: str
     sync_strategy: Optional[str] = None
+    remote_name: Optional[str] = None
+    remote_branch: Optional[str] = None
+    local_branch: Optional[str] = None
     git_repos: List[GitRepoInfo] = field(default_factory=list)
     manifest_path: Optional[str] = None
     default_tag_prefix: Optional[str] = None

@@ -10,9 +10,9 @@ class ActionExecutor:
 
     def execute_action(self, git_repo_info: GitRepoInfo, action: SyncAction):
         params = action.action_params.copy()
-        if "path" in params:  # For mkdir and rm
+        if "path" in params:
             params["path"] = git_repo_info.repo_path + "/" + params["path"]
-        if "cwd" in params: # For git commands
+        if "cwd" in params:
             params["cwd"] = git_repo_info.path
         else:
             params["cwd"] = git_repo_info.repo_path
@@ -21,7 +21,6 @@ class ActionExecutor:
             if params.get("command") == "runp":
                 if params.get("args")[0] == "git":
                     if params.get("args")[1] == "remote":
-                        # 特殊处理 jiri runp 中的管道命令
                         self.command_executor.execute("jiri_command", {"jiri_path": git_repo_info.repo_path, "command": "runp", "args": ["git", "remote", "get-url", "origin"]})
                         self.command_executor.execute("jiri_command", {"jiri_path": git_repo_info.repo_path, "command": "runp", "args": ["sed", "s/gerrit/gerrit-review/"]})
                         self.command_executor.execute("jiri_command", {"jiri_path": git_repo_info.repo_path, "command": "runp", "args": ["xargs", "git", "remote", "set-url", "--push", "origin"]})
@@ -36,7 +35,11 @@ class ActionExecutor:
             if "{local_branch}" in params.get("args", []):
                 params["args"] = [arg.format(local_branch=git_repo_info.local_branch) if isinstance(arg, str) else arg for arg in params["args"]]
             if "{remote_branch}" in params.get("args", []):
-                params["args"] = [arg.format(remote_branch=git_repo_info.remote_branch) if isinstance(arg, str) else arg for arg in params["args"]]
+                if git_repo_info.remote_branch is None:
+                    self.logger.warning(f"Remote branch is not configured for repo: {git_repo_info.repo_name}, action: {action.action_type}. Placeholder {{remote_branch}} will be replaced with None.")
+                    params["args"] = [arg.format(remote_branch=None) if isinstance(arg, str) else arg for arg in params["args"]]
+                else:
+                    params["args"] = [arg.format(remote_branch=git_repo_info.remote_branch) if isinstance(arg, str) else arg for arg in params["args"]]
             self.command_executor.execute(action.action_type, command_params=params)
 
         else:
