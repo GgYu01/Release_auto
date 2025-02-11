@@ -7,9 +7,9 @@ sync_strategies_config = AllSyncConfigs(
             parent_types=["alps", "yocto"],
             sync_actions=[
                 SyncAction(action_type="git_command", action_params={"command": "fetch", "args": ["--all"]}),
-                # SyncAction(action_type="git_command", action_params={"command": "checkout", "args": ["-f", "remotes/m/master"]}),
-                # SyncAction(action_type="git_command", action_params={"command": "reset", "args": ["--hard", "remotes/m/master"]}),
-                # SyncAction(action_type="git_command", action_params={"command": "clean", "args": ["-fdx"]}),
+                SyncAction(action_type="git_command", action_params={"command": "checkout", "args": ["-f", "remotes/m/master"]}),
+                SyncAction(action_type="git_command", action_params={"command": "reset", "args": ["--hard", "remotes/m/master"]}),
+                SyncAction(action_type="git_command", action_params={"command": "clean", "args": ["-fdx"]}),
             ],
         ),
         "nebula_sync": SyncStrategyConfig(

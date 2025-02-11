@@ -70,7 +70,8 @@ class RepoManager:
                 git_repo_info = GitRepoInfo(
                     repo_name=repo_name,
                     repo_parent=repo_config.repo_name,
-                    path=repo_path,
+                    path=repo_config.path,
+                    repo_path=repo_path,
                     repo_type="git",
                     tag_prefix=repo_config.default_tag_prefix,
                     remote_name=None,

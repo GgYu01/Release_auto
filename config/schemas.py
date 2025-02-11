@@ -59,7 +59,6 @@ class AllReposConfig:
     def all_git_repos(self):
         for repo_config in self.repo_configs.values():
             for git_repo in repo_config.git_repos:
-                git_repo.repo_path = repo_config.path
                 yield git_repo
 
 @dataclass

@@ -64,7 +64,7 @@ yocto_config = RepoConfig(
     repo_type="repo",
     path="/home/nebula/yocto",
     sync_strategy="alps_yocto_sync",
-    manifest_path="/home/nebula/yocto/.repo/manifests/mt8678/grt/1114/yocto.xml",
+    manifest_path="/home/nebula/yocto/.repo/manifests/mt8678/grt/1230/yocto.xml",
     manifest_type="repo",
     remote_name="grt-mt8678",
     remote_branch="release-spm.mt8678_2024_1230",
@@ -72,7 +72,7 @@ yocto_config = RepoConfig(
     default_tag_prefix="release-spm.mt8678_",
     default_analyze_commit=True,
     default_generate_patch=True,
-    all_branches=["release-spm.mt8678_2024_1114"],
+    all_branches=["release-spm.mt8678_2024_1230"],
 )
 
 alps_config = RepoConfig(
@@ -80,7 +80,7 @@ alps_config = RepoConfig(
     repo_type="repo",
     path="/home/nebula/alps",
     sync_strategy="alps_yocto_sync",
-    manifest_path="/home/nebula/alps/.repo/manifests/mt8678/grt/1114/alps.xml",
+    manifest_path="/home/nebula/alps/.repo/manifests/mt8678/grt/1230/alps.xml",
     manifest_type="repo",
     remote_name="grt-mt8678",
     remote_branch="release-spm.mt8678_2024_1230",
@@ -88,13 +88,13 @@ alps_config = RepoConfig(
     default_tag_prefix="release-spm.mt8678_",
     default_analyze_commit=True,
     default_generate_patch=True,
-    all_branches=["release-spm.mt8678_2024_1114"],
+    all_branches=["release-spm.mt8678_2024_1230"],
 )
 
 all_repos_config = AllReposConfig(
     repo_configs={
         "grpower": grpower_config,
-        "grt": grt_config,
+        # "grt": grt_config,
         # "grt_be": grt_be_config,
         # "nebula": nebula_config,
         # "yocto": yocto_config,

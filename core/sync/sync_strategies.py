@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from config.schemas import GitRepoInfo, SyncStrategyConfig, SyncAction # 导入 SyncAction
+from config.schemas import GitRepoInfo, SyncStrategyConfig, SyncAction
 from utils.command_executor import CommandExecutor
 from utils.custom_logger import Logger
 from config.sync_config import sync_strategies_config
