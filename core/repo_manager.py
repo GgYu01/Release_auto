@@ -36,14 +36,15 @@ class RepoManager:
                     path=repo_path,
                     repo_type="git",
                     tag_prefix=repo_config.default_tag_prefix,
-                    remote_name=None,
-                    remote_branch=None,
-                    local_branch=None,
+                    remote_name=repo_config.remote_name,
+                    remote_branch=project.get("remotebranch") if project.get("remotebranch") else repo_config.remote_branch,
+                    local_branch=project.get("remotebranch") if project.get("remotebranch") else repo_config.local_branch,
                     parent_repo=repo_config.repo_name,
                     analyze_commit=repo_config.default_analyze_commit,
                     generate_patch=repo_config.default_generate_patch,
                     special_branch_repos=repo_config.special_branch_repos,
                 )
+
                 if repo_name in repo_config.special_branch_repos:
                     git_repo_info.remote_branch = repo_config.special_branch_repos[repo_name].get("remote_branch", "origin/master")
                     git_repo_info.local_branch = repo_config.special_branch_repos[repo_name].get("local_branch", "master")

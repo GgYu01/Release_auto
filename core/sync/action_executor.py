@@ -29,14 +29,44 @@ class ActionExecutor:
                 params["jiri_path"] = git_repo_info.repo_path
                 self.command_executor.execute(action_type=action.action_type, command_params=params)
         elif action.action_type == "git_command":
-            if "{local_branch}" in params.get("args", []):
-                params["args"] = [arg.format(local_branch=git_repo_info.local_branch) if isinstance(arg, str) else arg for arg in params["args"]]
-            if "{remote_branch}" in params.get("args", []):
-                if git_repo_info.remote_branch is None:
-                    self.logger.warning(f"Remote branch is not configured for repo: {git_repo_info.repo_name}, action: {action.action_type}. Placeholder {{remote_branch}} will be replaced with None.")
-                    params["args"] = [arg.format(remote_branch=None) if isinstance(arg, str) else arg for arg in params["args"]]
+            self.logger.debug(f"Executing git_command action for repo: {git_repo_info.repo_name}")
+            self.logger.debug(f"  Initial params: {params}")
+            self.logger.debug(f"  GitRepoInfo.remote_name: {git_repo_info.remote_name}, GitRepoInfo.remote_branch: {git_repo_info.remote_branch}, GitRepoInfo.local_branch: {git_repo_info.local_branch}")
+
+            updated_args = []
+
+            for arg in params["args"]:
+                if isinstance(arg, str) and "{local_branch}" in arg:
+                    self.logger.debug("  Found {local_branch} placeholder in arg: " + arg)
+                    replaced_arg = arg.format(local_branch=git_repo_info.local_branch)
+                    self.logger.debug(f"    Replacing '{arg}' with '{replaced_arg}'")
+                    updated_args.append(replaced_arg)
+                elif isinstance(arg, str) and "{remote_name}" in arg and "{remote_branch}" in arg:
+                    self.logger.debug("  Found {remote_name} and {remote_branch} placeholders in arg: " + arg)
+                    replaced_arg = arg.format(remote_name=git_repo_info.remote_name, remote_branch=git_repo_info.remote_branch)
+                    self.logger.debug(f"    Replacing '{arg}' with '{replaced_arg}'")
+                    updated_args.append(replaced_arg)
+                elif isinstance(arg, str) and "{remote_name}" in arg:
+                    self.logger.debug("  Found {remote_name} placeholder in arg: " + arg)
+                    replaced_arg = arg.format(remote_name=git_repo_info.remote_name)
+                    self.logger.debug(f"    Replacing '{arg}' with '{replaced_arg}'")
+                    updated_args.append(replaced_arg)
+                elif isinstance(arg, str) and "{remote_branch}" in arg:
+                    self.logger.debug("  Found {remote_branch} placeholder in arg: " + arg)
+                    if git_repo_info.remote_branch is None:
+                        self.logger.warning(f"Remote branch is not configured for repo: {git_repo_info.repo_name}. Placeholder {{remote_branch}} will be replaced with None.")
+                        replaced_arg = arg.format(remote_branch=None)
+                        self.logger.debug(f"    Replacing '{arg}' with '{replaced_arg}' (remote_branch is None)")
+                        updated_args.append(replaced_arg)
+                    else:
+                        replaced_arg = arg.format(remote_branch=git_repo_info.remote_branch)
+                        self.logger.debug(f"    Replacing '{arg}' with '{replaced_arg}'")
+                        updated_args.append(replaced_arg)
                 else:
-                    params["args"] = [arg.format(remote_branch=git_repo_info.remote_branch) if isinstance(arg, str) else arg for arg in params["args"]]
+                    updated_args.append(arg)
+
+            params["args"] = updated_args
+            self.logger.debug(f"  Final params before command execution: {params}")
             self.command_executor.execute(action.action_type, command_params=params)
 
         else:
