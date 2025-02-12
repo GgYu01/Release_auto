@@ -26,8 +26,6 @@ class RepoPropertyUpdater:
             analyze_commit=repo_config.default_analyze_commit,
             generate_patch=repo_config.default_generate_patch,
             branch_info=branch_info,
-            remote_name=repo_config.remote_name,
-            remote_branch=repo_config.remote_branch
         )
 
     def update_all_repos(self) -> None:

@@ -94,10 +94,10 @@ alps_config = RepoConfig(
 all_repos_config = AllReposConfig(
     repo_configs={
         "grpower": grpower_config,
-        # "grt": grt_config,
-        # "grt_be": grt_be_config,
-        # "nebula": nebula_config,
-        # "yocto": yocto_config,
-        # "alps": alps_config,
+        "grt": grt_config,
+        "grt_be": grt_be_config,
+        "nebula": nebula_config,
+        "yocto": yocto_config,
+        "alps": alps_config,
     }
 )

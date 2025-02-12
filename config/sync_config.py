@@ -16,8 +16,10 @@ sync_strategies_config = AllSyncConfigs(
             strategy_name="nebula_sync",
             parent_types=["nebula"],
             sync_actions=[
+                SyncAction(action_type="git_command", action_params={"command": "fetch", "args": ["--all"]}),
+                SyncAction(action_type="git_command", action_params={"command": "reset", "args": ["--hard"]}),                
                 SyncAction(action_type="git_command", action_params={"command": "checkout", "args": ["-f", "{local_branch}"]}),
-                SyncAction(action_type="git_command", action_params={"command": "reset", "args": ["--hard", "{remote_name}/{remote_branch}"]}),
+                SyncAction(action_type="git_command", action_params={"command": "branch", "args": ["--set-upstream-to={remote_name}/{remote_branch}", "{local_branch}"]}),
                 SyncAction(action_type="git_command", action_params={"command": "pull", "args": []}),
             ],
         ),

@@ -28,17 +28,19 @@ class RepoManager:
             root = tree.getroot()
             for project in root.findall("projects/project"):
                 repo_name = project.get("name")
+                remote_branch = project.get("remotebranch")
                 repo_path = construct_path(repo_config.path, project.get("path"))
 
                 git_repo_info = GitRepoInfo(
                     repo_name=repo_name,
                     repo_parent=repo_config.repo_name,
-                    path=repo_path,
+                    path=repo_config.path,
+                    repo_path=repo_path,
                     repo_type="git",
                     tag_prefix=repo_config.default_tag_prefix,
                     remote_name=repo_config.remote_name,
-                    remote_branch=project.get("remotebranch") if project.get("remotebranch") else repo_config.remote_branch,
-                    local_branch=project.get("remotebranch") if project.get("remotebranch") else repo_config.local_branch,
+                    remote_branch=remote_branch if remote_branch else repo_config.remote_branch,
+                    local_branch=remote_branch if remote_branch else repo_config.local_branch,
                     parent_repo=repo_config.repo_name,
                     analyze_commit=repo_config.default_analyze_commit,
                     generate_patch=repo_config.default_generate_patch,
@@ -65,8 +67,7 @@ class RepoManager:
             
             for project in root.findall("project"):
                 repo_name = project.get("name")
-                repo_path = construct_path(repo_config.path, project.get("path"))
-                remote_name = project.get("remote")
+                repo_path = construct_path(repo_config.path, project.get("path"))                
 
                 git_repo_info = GitRepoInfo(
                     repo_name=repo_name,
@@ -75,9 +76,9 @@ class RepoManager:
                     repo_path=repo_path,
                     repo_type="git",
                     tag_prefix=repo_config.default_tag_prefix,
-                    remote_name=None,
-                    remote_branch=None,
-                    local_branch=None,
+                    remote_name=repo_config.remote_name,
+                    remote_branch=repo_config.remote_branch,
+                    local_branch=repo_config.local_branch,
                     parent_repo=repo_config.repo_name,
                     analyze_commit=repo_config.default_analyze_commit,
                     generate_patch=repo_config.default_generate_patch,
