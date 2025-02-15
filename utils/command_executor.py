@@ -9,17 +9,19 @@ class CommandExecutor:
     def execute(self, command_type: str, command_params: Dict):
         try:
             if command_type == "git_command":
-                self.execute_git_command(command_params)
+                return self.execute_git_command(command_params)
             elif command_type == "jiri_command":
-                self.execute_jiri_command(command_params)
+                return self.execute_jiri_command(command_params)
             elif command_type == "mkdir":
-                self.execute_mkdir_command(command_params)
+                return self.execute_mkdir_command(command_params)
             elif command_type == "rm":
-                self.execute_rm_command(command_params)
+                return self.execute_rm_command(command_params)
             else:
                 self.logger.error(f"Unknown command type: {command_type}")
+                return None
         except Exception as e:
             self.logger.exception(f"Error executing command: {e}")
+            return None
 
     def execute_git_command(self, params: Dict):
         command = ["git"] + [params.get("command")] + params.get("args", [])
@@ -30,6 +32,7 @@ class CommandExecutor:
             self.logger.error(f"Git command failed: {result.stderr}")
             raise subprocess.CalledProcessError(result.returncode, command, result.stderr)
         self.logger.debug(f"Git command output: {result.stdout}")
+        return result
 
     def execute_jiri_command(self, params: Dict):
         jiri_path = params.get("jiri_path", ".")
@@ -40,6 +43,7 @@ class CommandExecutor:
             self.logger.error(f"Jiri command failed: {result.stderr}")
             raise subprocess.CalledProcessError(result.returncode, command, result.stderr)
         self.logger.debug(f"Jiri command output: {result.stdout}")
+        return result
 
     def execute_mkdir_command(self, params: Dict):
         path = params.get("path")
@@ -49,6 +53,7 @@ class CommandExecutor:
             self.logger.error(f"mkdir command failed: {result.stderr}")
             raise subprocess.CalledProcessError(result.returncode, ["mkdir", "-p", path], result.stderr)
         self.logger.debug(f"mkdir command output: {result.stdout}")
+        return result
 
     def execute_rm_command(self, params: Dict):
         path = params.get("path")
@@ -58,3 +63,4 @@ class CommandExecutor:
             self.logger.error(f"rm command failed: {result.stderr}")
             raise subprocess.CalledProcessError(result.returncode, ["rm","-rf", path], result.stderr)
         self.logger.debug(f"rm command output: {result.stdout}")
+        return result

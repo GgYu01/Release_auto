@@ -64,3 +64,7 @@ class AllReposConfig:
 @dataclass
 class AllSyncConfigs:
     sync_configs: Dict[str, SyncStrategyConfig] = field(default_factory=dict)
+
+@dataclass
+class VersionIdentifierConfig:
+    manual_identifier: Optional[str] = None
