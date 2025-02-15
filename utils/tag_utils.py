@@ -1,31 +1,35 @@
+import re
 import datetime
+from typing import Dict, Union, Optional
 
-def parse_version_identifier(version_identifier):
+
+class InvalidVersionIdentifierFormatError(ValueError):
+    pass
+
+
+def parse_version_identifier(version_identifier: str) -> Dict[str, Union[datetime.date, int]]:
+    pattern = r"^(\d{4})_(\d{2})(\d{2})_(\d{2})$"
+    match = re.match(pattern, version_identifier)
+    
+    if not match:
+        raise InvalidVersionIdentifierFormatError(
+            f"Invalid version identifier format: {version_identifier}")
+    
     try:
-        parts = version_identifier.split('_')
-        if len(parts) != 3:
-            return None
-        year = int(parts[0])
-        month_day = parts[1]
-        day_counter = int(parts[2])
-
-        month = int(month_day[0:2])
-        day = int(month_day[2:4])
-
-        tag_date = datetime.datetime(year, month, day).date()
-        return {"date": tag_date, "counter": day_counter}
+        year = int(match.group(1))
+        month = int(match.group(2))
+        day = int(match.group(3))
+        counter = int(match.group(4))
+        
+        tag_date = datetime.date(year, month, day)
+        return {"date": tag_date, "counter": counter}
     except ValueError:
-        return None
+        raise InvalidVersionIdentifierFormatError(
+            f"Invalid date components in version identifier: {version_identifier}")
 
-def generate_next_version_identifier(parsed_version_data, current_time):
-    tag_date = parsed_version_data["date"]
-    day_counter = parsed_version_data["counter"]
-    current_date = current_time.date()
 
-    if current_date > tag_date:
-        return current_time.strftime("%Y_%m%d_01")
-    elif current_date == tag_date:
-        next_counter = day_counter + 1
-        return current_time.strftime(f"%Y_%m%d_{next_counter:02d}")
-    else:
-        return None
+def generate_next_version_identifier(
+    current_time: datetime.datetime,
+    last_sequence: int
+) -> str:
+    return current_time.strftime(f"%Y_%m%d_{(last_sequence + 1):02d}")
