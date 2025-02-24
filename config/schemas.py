@@ -2,6 +2,11 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Optional
 
 @dataclass
+class LoggingConfig:
+    level: str = "INFO"
+    format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+@dataclass
 class GitRepoInfo:
     repo_name: str
     repo_parent: str
@@ -21,6 +26,7 @@ class GitRepoInfo:
     branch_info: Optional[str] = None
     special_branch_repos: Dict[str, Dict[str, str]] = field(default_factory=dict)
     push_template: Optional[str] = None
+    logging_config: LoggingConfig = field(default_factory=LoggingConfig)
 
 @dataclass
 class RepoConfig:
@@ -40,6 +46,7 @@ class RepoConfig:
     default_generate_patch: bool = False
     all_branches: List[str] = field(default_factory=list)
     special_branch_repos: Dict[str, str] = field(default_factory=dict)
+    logging_config: LoggingConfig = field(default_factory=LoggingConfig)
 
 @dataclass
 class SyncAction:
@@ -68,3 +75,50 @@ class AllSyncConfigs:
 @dataclass
 class VersionIdentifierConfig:
     manual_identifier: Optional[str] = None
+
+@dataclass
+class BuildPathConfig:
+    grpower_workspace: str = "~/grpower/workspace"
+    nebula_out: str = "~/grpower/workspace/nebula/out"
+    grt_path: str = "~/grt"
+    thyp_sdk_path: str = "~/grt/thyp-sdk"
+    yocto_path: str = "~/yocto"
+    alps_path: str = "~/alps"
+    nebula_sdk_output: str = "/home/nebula/grt/nebula-sdk"
+    prebuilt_images: str = "~/grt/thyp-sdk/products/mt8678-mix/prebuilt-images"
+    tee_temp: str = "~/grt/teetemp"
+    tee_kernel: str = "~/alps/vendor/mediatek/proprietary/trustzone/grt/source/common/kernel"
+    yocto_hypervisor: str = "~/yocto/prebuilt/hypervisor/grt"
+
+@dataclass
+class BuildGitConfig:
+    commit_author: str = "Default Author <default@example.com>"
+    commit_message_sdk: str = "chore(sdk): update nebula-sdk artifacts"
+    commit_message_nebula: str = "chore(nebula): sync prebuilt images"
+    commit_message_tee: str = "chore(tee): update TEE kernel binaries"
+    remote_name: str = "origin"
+    remote_branch_nebula: str = "nebula"
+    remote_branch_tee: str = "release-spm.mt8678_2024_1230"
+    push_template: str = "{remote_name} HEAD:refs/for/{remote_branch}"
+    sdk_paths_to_add: List[str] = field(default_factory=lambda: ["ree", "run", "hee"])
+
+@dataclass
+class BuildTypeConfig:
+    name: str
+    enabled: bool = False
+    pre_build_clean: bool = True
+    post_build_git: bool = True
+
+@dataclass
+class BuildConfig:
+    build_types: Dict[str, BuildTypeConfig] = field(default_factory=lambda: {
+        "nebula-sdk": BuildTypeConfig(name="nebula-sdk"),
+        "nebula": BuildTypeConfig(name="nebula"),
+        "TEE": BuildTypeConfig(name="TEE")
+    })
+    paths: BuildPathConfig = field(default_factory=BuildPathConfig)
+    git: BuildGitConfig = field(default_factory=BuildGitConfig)
+    enable_environment_cleanup: bool = True
+    max_concurrent_builds: int = 1
+    build_timeout_seconds: int = 3600
+    max_git_retries: int = 3

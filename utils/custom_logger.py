@@ -1,5 +1,8 @@
 from loguru import logger
 from config.logging_config import LoggingConfig
+import logging
+import contextvars
+import json
 
 class Logger:
     def __init__(self, name, logging_config=None):
@@ -30,3 +33,12 @@ class Logger:
 
     def log(self, level, msg, *args, **kwargs):
         logger.bind(name=self.name).opt(depth=1, exception=False).log(level, msg, *args, **kwargs)
+
+# Context variable for request tracking
+request_id_var = contextvars.ContextVar('request_id')
+
+def set_request_id(request_id: str):
+    request_id_var.set(request_id)
+
+def get_request_id():
+    return request_id_var.get(None)  # Return None if not set
