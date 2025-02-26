@@ -4,7 +4,6 @@ from config.schemas import BuildConfig, BuildTypeConfig
 from utils.command_executor import CommandExecutor
 from utils.custom_logger import Logger
 from utils.file_utils import FileOperator
-from utils.git_utils import GitOperator
 import os
 import pathlib
 

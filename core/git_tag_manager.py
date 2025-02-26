@@ -1,7 +1,7 @@
 from typing import Tuple, Optional, List
 from utils.command_executor import CommandExecutor
+from utils.custom_logger import Logger
 from config.schemas import AllReposConfig
-import logging
 import re
 from datetime import datetime
 
