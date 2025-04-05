@@ -4,7 +4,7 @@ from typing import List, Dict, Optional
 @dataclass
 class LoggingConfig:
     level: str = "INFO"
-    format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    format: str = "%(asctime)s - %(name)s:%(funcName)s:%(lineno)d - %(levelname)s - %(message)s"
 
 @dataclass
 class GitRepoInfo:
