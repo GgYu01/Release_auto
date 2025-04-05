@@ -113,7 +113,7 @@ class BuildTypeConfig:
 class BuildConfig:
     build_types: Dict[str, BuildTypeConfig] = field(default_factory=lambda: {
         "nebula-sdk": BuildTypeConfig(name="nebula-sdk"),
-        "nebula": BuildTypeConfig(name="nebula"),
+        "nebula": BuildTypeConfig(name="nebula" ,enabled=True ,pre_build_clean=False),
         "TEE": BuildTypeConfig(name="TEE")
     })
     paths: BuildPathConfig = field(default_factory=BuildPathConfig)

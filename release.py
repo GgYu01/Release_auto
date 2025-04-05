@@ -24,24 +24,24 @@ def main():
         repo_manager = RepoManager(all_repos_config)
         repo_manager.initialize_git_repos()
         
-        repo_synchronizer = RepoSynchronizer(all_repos_config, sync_strategies_config, command_executor)
-        repo_synchronizer.sync_repos()
+        # repo_synchronizer = RepoSynchronizer(all_repos_config, sync_strategies_config, command_executor)
+        # repo_synchronizer.sync_repos()
 
-        tagging_config = TaggingConfig()
-        tagger = Tagger(tagging_config, command_executor)
-        tagger.tag_repositories()
+        # tagging_config = TaggingConfig()
+        # tagger = Tagger(tagging_config, command_executor)
+        # tagger.tag_repositories()
 
-        # build_system = BuildSystem(build_config, command_executor)
-        # build_success = build_system.build()
+        build_system = BuildSystem(build_config, command_executor)
+        build_success = build_system.build()
         
-        # if build_success:
-        #     git_tag_fetcher = GitTagFetcher(command_executor, logger)
-        #     git_tag_fetcher.update_repo_tags(all_repos_config)
-        #     logger.info("Build process completed successfully")
-        #     return 0
-        # else:
-        #     logger.error("Build process failed")
-        #     return 1
+        if build_success:
+            git_tag_fetcher = GitTagFetcher(command_executor, logger)
+            git_tag_fetcher.update_repo_tags(all_repos_config)
+            logger.info("Build process completed successfully")
+            return 0
+        else:
+            logger.error("Build process failed")
+            return 1
 
         for git_repo in all_repos_config.all_git_repos():
             logger.info(f"Git Repo Name: {git_repo.repo_name}")
