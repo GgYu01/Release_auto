@@ -35,8 +35,8 @@ def main():
         build_success = build_system.build()
         
         if build_success:
-            git_tag_fetcher = GitTagFetcher(command_executor, logger)
-            git_tag_fetcher.update_repo_tags(all_repos_config)
+            # git_tag_fetcher = GitTagFetcher(command_executor, logger)
+            # git_tag_fetcher.update_repo_tags(all_repos_config)
             logger.info("Build process completed successfully")
             return 0
         else:

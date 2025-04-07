@@ -92,12 +92,12 @@ class BuildPathConfig:
 
 @dataclass
 class BuildGitConfig:
-    commit_author: str = "Default Author <default@example.com>"
+    commit_author: str = "gaoyx <gaoyx@goldenrivertek.com>"
     commit_message_sdk: str = "chore(sdk): update nebula-sdk artifacts"
     commit_message_nebula: str = "chore(nebula): sync prebuilt images"
     commit_message_tee: str = "chore(tee): update TEE kernel binaries"
     remote_name: str = "origin"
-    remote_branch_nebula: str = "nebula"
+    remote_branch_nebula: str = "release-spm.mt8678_2024_1230"
     remote_branch_tee: str = "release-spm.mt8678_2024_1230"
     push_template: str = "{remote_name} HEAD:refs/for/{remote_branch}"
     sdk_paths_to_add: List[str] = field(default_factory=lambda: ["ree", "run", "hee"])
