@@ -5,7 +5,7 @@ import shutil
 import subprocess
 from dataclasses import asdict
 from typing import List, Dict, Optional, Any, Tuple
-from config.schemas import BuildConfig, BuildTypeConfig
+from config.schemas import BuildConfig, BuildTypeConfig, FileCopyOperation
 from utils.command_executor import CommandExecutor
 from utils.custom_logger import Logger
 from utils.file_utils import FileOperator
@@ -50,20 +50,16 @@ class BuildSystem:
 
     def _get_environment_after_sourcing(self, script_path: pathlib.Path, cwd: pathlib.Path) -> Dict[str, str]:
         env_vars: Dict[str, str] = {}
-        # Use the script name, cwd handles the directory context
         command_str = f"export NO_PIPENV_SHELL=1 && source {shlex.quote(str(script_path))} && env"
         self.logger.debug(f"Attempting to capture environment using command in {cwd}: {command_str}")
         try:
-            # Need capture_output=True and text=True for this specific call.
-            # Call _run_subprocess directly from the executor instance.
-            # Note: command_executor instance is self.command_executor
             process_result = self.command_executor._run_subprocess(
                  command=command_str,
                  cwd=cwd,
-                 shell=True,         # Crucial for sourcing
-                 capture_output=True,# Need to capture
-                 text=True,          # Need text output
-                 check=True          # Raise on non-zero exit
+                 shell=True,
+                 capture_output=True,
+                 text=True,
+                 check=True
              )
 
             if process_result.stdout:
@@ -71,49 +67,99 @@ class BuildSystem:
                     line = line.strip()
                     if not line:
                         continue
-                    # Basic check to avoid lines that are clearly not variable assignments
                     if '=' not in line or line.startswith('#') or line.startswith('export'):
                         continue
                     parts = line.split('=', 1)
                     if len(parts) == 2:
                         key, value = parts
-                        # Further filter potentially problematic entries like functions
                         if key.isidentifier() and not key.startswith('_') and '(' not in key:
                            env_vars[key] = value
-                           # self.logger.debug(f"Captured env var: {key}") # Optional: too verbose?
-                        # else:
-                        #    self.logger.debug(f"Skipping potential non-variable env line: '{line}'")
-                    # else: # This case should be rare now due to '=' check above
-                        # self.logger.warning(f"Could not parse environment line: '{line}' from script {script_path.name}")
             else:
                  self.logger.warning(f"No stdout received from environment capture command: '{command_str}' in {cwd}")
 
         except (subprocess.CalledProcessError, FileNotFoundError) as e:
             self.logger.error(f"Failed to execute or find command for environment capture from {script_path.name} in {cwd}: {e}")
-            # Propagate the error to stop the build process
             raise RuntimeError(f"Failed to capture environment from script {script_path.name}") from e
         except Exception as e:
              self.logger.exception(f"Unexpected error capturing environment from {script_path.name} in {cwd}: {e}")
-             # Propagate the error
              raise RuntimeError(f"Unexpected error capturing environment from script {script_path.name}") from e
 
         if not env_vars:
-             # Log as warning, but let the caller decide if it's fatal
              self.logger.warning(f"Captured environment from {script_path.name} appears empty.")
 
         self.logger.info(f"Successfully captured {len(env_vars)} environment variables from {script_path.name}")
         return env_vars
 
+    def _get_environment_after_script_execution(
+        self,
+        script_path: pathlib.Path,
+        script_args: List[str],
+        cwd: pathlib.Path,
+        base_env: Optional[Dict[str, str]] = None
+    ) -> Dict[str, str]:
+        env_vars: Dict[str, str] = {}
+        script_name: str = script_path.name
+        quoted_cwd: str = shlex.quote(str(cwd))
+        quoted_script: str = f"./{shlex.quote(script_name)}"
+        joined_args: str = shlex.join(script_args)
+
+        command_str: str = f"cd {quoted_cwd} && {quoted_script} {joined_args} && env"
+
+        self.logger.debug(f"Attempting script execution and environment capture in {cwd}: {command_str}")
+
+        try:
+            process_result = self.command_executor._run_subprocess(
+                command=command_str,
+                cwd=cwd,
+                shell=True,
+                capture_output=True,
+                text=True,
+                check=True,
+                env=base_env
+            )
+
+            if process_result.stdout:
+                env_output_lines = process_result.stdout.strip().splitlines()
+                for line in env_output_lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if '=' not in line or line.startswith('#') or line.startswith('export'):
+                        continue
+                    parts = line.split('=', 1)
+                    if len(parts) == 2:
+                        key, value = parts
+                        if key.isidentifier() and not key.startswith('_') and '(' not in key:
+                            env_vars[key] = value
+            else:
+                self.logger.warning(f"No stdout received from script execution and environment capture: '{command_str}' in {cwd}")
+
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"Script execution failed during environment capture: {script_name} in {cwd}. Stderr: {e.stderr}")
+            raise RuntimeError(f"Script {script_name} failed with exit code {e.returncode}") from e
+        except FileNotFoundError as e:
+            self.logger.error(f"Script or 'env' command not found during environment capture: {script_name} in {cwd}: {e}")
+            raise RuntimeError(f"Required command not found for environment capture from script {script_name}") from e
+        except Exception as e:
+            self.logger.exception(f"Unexpected error capturing environment after executing {script_name} in {cwd}: {e}")
+            raise RuntimeError(f"Unexpected error capturing environment after script {script_name}") from e
+
+        if not env_vars:
+            self.logger.error(f"Captured environment after executing {script_name} appears empty. This is unexpected.")
+            raise RuntimeError(f"Failed to capture environment after script {script_name} (result was empty).")
+
+        self.logger.info(f"Successfully captured {len(env_vars)} environment variables after executing {script_name}")
+        return env_vars
+
     def _execute_build_commands(self, commands: List[Dict[str, Any]], check: bool = True) -> None:
         for cmd_spec in commands:
             command_type = cmd_spec.pop("type", "shell_command")
-            # Ensure cwd is Path object if present
             cwd = cmd_spec.get("cwd")
             if cwd:
                  if isinstance(cwd, str):
                      cmd_spec["cwd"] = pathlib.Path(cwd).expanduser()
                  elif isinstance(cwd, pathlib.Path):
-                     cmd_spec["cwd"] = cwd.expanduser() # Ensure expanded
+                     cmd_spec["cwd"] = cwd.expanduser()
 
             cmd_env = cmd_spec.get("env")
             if cmd_env is not None and not isinstance(cmd_env, dict):
@@ -126,7 +172,6 @@ class BuildSystem:
     def build_nebula_sdk(self) -> bool:
         try:
             self.logger.info("Starting nebula-sdk build")
-            # Removed source_command. Env vars must be passed explicitly if needed.
             commands: List[Dict[str, Any]] = [
                 {"command": "gr-nebula.py", "args": ["build"], "cwd": self.grpower_path},
                 {"command": "gr-nebula.py", "args": ["export-buildroot"], "cwd": self.grpower_path},
@@ -147,7 +192,7 @@ class BuildSystem:
     def build_nebula(self) -> bool:
         try:
             self.logger.info("Starting nebula build")
-            # Capture environment from grpower env script
+
             self.logger.info("Capturing build environment from grpower env script...")
             nebula_build_env: Dict[str, str] = {}
             try:
@@ -156,15 +201,13 @@ class BuildSystem:
                       cwd=self.grpower_path
                  )
                  if not nebula_build_env:
-                      # Helper method logged the warning, but we treat empty env as fatal here
-                      self.logger.error("Captured build environment is empty. Cannot proceed.")
+                      self.logger.error("Captured build environment from grpower is empty. Cannot proceed.")
                       raise RuntimeError("Failed to capture necessary build environment from grpower (empty result).")
             except RuntimeError as e:
-                  self.logger.error(f"Failed to capture build environment: {e}")
-                  # Re-raise to be caught by the main try-except block below
+                  self.logger.error(f"Failed to capture grpower build environment: {e}")
                   raise
 
-            self.logger.info("Preparing initial build commands with captured environment...")
+            self.logger.info("Preparing initial build commands with captured grpower environment...")
             initial_commands_spec: List[Dict[str, Any]] = [
                 {"command": "gr-nebula.py", "args": ["build"], "cwd": self.grpower_path},
                 {"command": "gr-nebula.py", "args": ["export-buildroot"], "cwd": self.grpower_path},
@@ -172,31 +215,27 @@ class BuildSystem:
                 {"command": "gr-android.py", "args": ["buildroot", "export_nebula_images", "-o", str(self.prebuilt_images_path)], "cwd": self.grpower_path}
             ]
 
-            # Inject the captured environment only into the specific script calls
             commands_with_env: List[Dict[str, Any]] = []
             target_scripts = ["gr-nebula.py", "gr-android.py"]
             for cmd_spec in initial_commands_spec:
                 current_command = cmd_spec.get("command")
-                # Ensure command is a string for comparison
                 if isinstance(current_command, str) and current_command in target_scripts:
                     modified_spec = cmd_spec.copy()
                     modified_spec["env"] = nebula_build_env
-                    # Ensure shell=False (it's the default for _run_subprocess when command is list/string+args)
-                    modified_spec.pop("shell", None) # Remove shell if it somehow got added
-                    self.logger.debug(f"Injecting captured env into command: {current_command}")
+                    modified_spec.pop("shell", None)
+                    self.logger.debug(f"Injecting captured grpower env into command: {current_command}")
                     commands_with_env.append(modified_spec)
                 elif isinstance(current_command, list) and current_command and current_command[0] in target_scripts:
-                     # Handle case where command might be a list like ["python", "script.py"]
                      modified_spec = cmd_spec.copy()
                      modified_spec["env"] = nebula_build_env
                      modified_spec.pop("shell", None)
-                     self.logger.debug(f"Injecting captured env into command list: {current_command}")
+                     self.logger.debug(f"Injecting captured grpower env into command list: {current_command}")
                      commands_with_env.append(modified_spec)
                 else:
-                    commands_with_env.append(cmd_spec) # Append unmodified spec
+                    commands_with_env.append(cmd_spec)
 
             self.logger.info("Executing initial build commands...")
-            self._execute_build_commands(commands_with_env) # Use the modified list
+            self._execute_build_commands(commands_with_env)
 
             src_elf = self.nebula_out_path / "build-zircon" / "build-venus-hee" / "zircon.elf"
             dst_elf = self.prebuilt_images_path / "nebula_kernel.elf"
@@ -226,58 +265,59 @@ class BuildSystem:
                 self.logger.error(f"Failed to create symlink {sdk_info_target} -> {nebula_sdk_source}: {e}")
                 raise
             except FileNotFoundError as e:
-                 # Already logged specific error
                  raise
 
+            self.logger.info("Executing thyp-sdk configure script and capturing environment...")
+            configure_script_path: pathlib.Path = self.thyp_sdk_path / 'configure.sh'
+            configure_args: List[str] = [str(self.nebula_sdk_output_path.resolve())]
+            configure_env: Dict[str, str] = {}
+            try:
+                configure_env = self._get_environment_after_script_execution(
+                    script_path=configure_script_path,
+                    script_args=configure_args,
+                    cwd=self.thyp_sdk_path
+                )
+            except RuntimeError as e:
+                self.logger.error(f"Failed to execute configure.sh or capture its environment: {e}")
+                raise
 
-            thyp_sdk_path_str = str(self.thyp_sdk_path.resolve())
-            build_env = os.environ.copy()
-            build_env['SDK_APP_DIR'] = thyp_sdk_path_str
+            self.logger.info("Successfully executed configure.sh and captured environment.")
 
-            sdk_local_bin = os.path.join(thyp_sdk_path_str, '.local', 'bin')
-            sdk_host_tools = os.path.join(
-                thyp_sdk_path_str, 'scripts', 'host-tools'
-            )
-            original_path = build_env.get('PATH', '')
-            build_env['PATH'] = os.pathsep.join(
-                [sdk_local_bin, sdk_host_tools, original_path]
-            )
+            self.logger.info("Preparing environment for build_all.sh...")
+            build_all_env: Dict[str, str] = configure_env.copy()
 
-            build_env['LC_ALL'] = 'C.UTF-8'
-            build_env['LANG'] = 'C.UTF-8'
-            self.logger.info(
-                "Executing thyp-sdk configure script (configure.sh)..."
-            )
-            configure_command: List[Dict[str, Any]] = [
-                 {
-                     "command": [
-                         "./configure.sh",
-                         str(self.nebula_sdk_output_path.resolve())
-                     ],
-                     "cwd": self.thyp_sdk_path,
-                     "shell": True,
-                     "env": build_env
-                 }
-            ]
-            self._execute_build_commands(configure_command)
+            build_all_env['LC_ALL'] = 'C.UTF-8'
+            build_all_env['LANG'] = 'C.UTF-8'
 
-            build_all_command: List[Dict[str, Any]] = [
+            if 'PATH' not in build_all_env:
+                self.logger.warning("PATH variable not found in captured configure.sh environment. build_all.sh might fail.")
+
+            self.logger.debug(f"Environment prepared for build_all.sh with {len(build_all_env)} variables.")
+
+            build_all_command_spec: List[Dict[str, Any]] = [
                  {
                      "command": "./build_all.sh",
                      "cwd": self.thyp_sdk_path,
                      "shell": True,
-                     "env": build_env
+                     "env": build_all_env
                  }
             ]
-            self.logger.info("Executing thyp-sdk build script (build_all.sh)...")
-            self._execute_build_commands(build_all_command)
+            self.logger.info("Executing thyp-sdk build script (build_all.sh) with captured environment...")
+            self._execute_build_commands(build_all_command_spec)
+
+            self.logger.info("Performing post-build copy operations...")
+            copy_success = self._perform_post_build_copy("nebula")
+            if not copy_success:
+                self.logger.error("Post-build copy step failed for nebula. Aborting build.")
+                return False
+            self.logger.info("Post-build copy operations completed successfully.")
 
             if self.config.build_types["nebula"].post_build_git:
                 self._handle_nebula_git_operations()
 
             self.logger.info("nebula build completed successfully")
             return True
-        except (subprocess.CalledProcessError, FileNotFoundError, OSError, Exception) as e:
+        except (subprocess.CalledProcessError, FileNotFoundError, OSError, RuntimeError, Exception) as e:
             self.logger.error(f"nebula build failed: {e}")
             return False
 
@@ -288,7 +328,6 @@ class BuildSystem:
             if self.config.build_types["TEE"].pre_build_clean:
                  self.clean_environment()
 
-            # Removed source_command
             commands: List[Dict[str, Any]] = [
                 {"command": "gr-nebula.py", "args": ["build"], "cwd": self.grpower_path},
                 {"command": "gr-nebula.py", "args": ["export-buildroot"], "cwd": self.grpower_path},
@@ -320,6 +359,45 @@ class BuildSystem:
             self.logger.error(f"TEE build failed: {e}")
             return False
 
+
+    def _perform_post_build_copy(self, build_type_name: str) -> bool:
+        self.logger.info(f"Starting post-build copy operations for {build_type_name}")
+        build_type_config = self.config.build_types.get(build_type_name)
+
+        if not build_type_config:
+            self.logger.error(f"Build type config not found for '{build_type_name}' during post-build copy.")
+            return False
+
+        if not hasattr(build_type_config, 'post_build_copy_operations') or not build_type_config.post_build_copy_operations:
+            self.logger.info(f"No post-build copy operations defined for {build_type_name}.")
+            return True
+
+        copy_operations: List[FileCopyOperation] = build_type_config.post_build_copy_operations
+
+        for op in copy_operations:
+            try:
+                if op.is_wildcard:
+                    absolute_source_pattern = str(self.thyp_sdk_path.joinpath(op.source_path))
+                    absolute_destination_dir = str(self.yocto_hypervisor_path.joinpath(op.destination_path))
+                    self.logger.info(f"Copying wildcard: {absolute_source_pattern} -> {absolute_destination_dir}")
+                    success = self.file_operator.copy_wildcard(absolute_source_pattern, absolute_destination_dir)
+                else:
+                    absolute_source_path = str(self.thyp_sdk_path.joinpath(op.source_path))
+                    absolute_destination_path = str(self.yocto_hypervisor_path.joinpath(op.destination_path))
+                    self.logger.info(f"Copying file: {absolute_source_path} -> {absolute_destination_path}")
+                    success = self.file_operator.copy_file(absolute_source_path, absolute_destination_path)
+
+                if not success:
+                    self.logger.error(f"Post-build copy failed for operation: source='{op.source_path}', dest='{op.destination_path}'")
+                    return False
+
+            except Exception as e:
+                self.logger.exception(f"Unexpected error during post-build copy operation (source='{op.source_path}', dest='{op.destination_path}'): {e}")
+                return False
+
+        self.logger.info(f"Successfully completed all post-build copy operations for {build_type_name}.")
+        return True
+
     def _handle_sdk_git_operations(self) -> None:
         repo_path = str(self.nebula_sdk_output_path)
         self.git_operator.safe_add(
@@ -331,12 +409,6 @@ class BuildSystem:
             self.config.git.commit_message_sdk,
             self.config.git.commit_author
         )
-        self.git_operator.push_to_remote(
-            repo_path,
-            self.config.git.remote_name,
-            "HEAD",
-            self.config.git.remote_branch_nebula
-        )
 
     def _handle_nebula_git_operations(self) -> None:
         repo_path_prebuilt = str(self.prebuilt_images_path)
@@ -346,11 +418,6 @@ class BuildSystem:
             self.config.git.commit_message_nebula,
             self.config.git.commit_author
         )
-        self.git_operator.push_to_remote(
-            repo_path_prebuilt,
-            self.config.git.remote_name, "HEAD",
-            self.config.git.remote_branch_nebula
-        )
 
         repo_path_yocto = str(self.yocto_hypervisor_path)
         self.git_operator.safe_add(repo_path_yocto, ["."])
@@ -358,11 +425,6 @@ class BuildSystem:
             repo_path_yocto,
             self.config.git.commit_message_nebula,
             self.config.git.commit_author
-        )
-        self.git_operator.push_to_remote(
-            repo_path_yocto,
-            self.config.git.remote_name, "HEAD",
-            self.config.git.remote_branch_nebula
         )
 
     def _handle_tee_git_operations(self) -> None:
@@ -372,11 +434,6 @@ class BuildSystem:
             repo_path,
             self.config.git.commit_message_tee,
             self.config.git.commit_author
-        )
-        self.git_operator.push_to_remote(
-            repo_path,
-            self.config.git.remote_name, "HEAD",
-            self.config.git.remote_branch_tee
         )
 
     def build(self, build_types_requested: Optional[List[str]] = None) -> bool:

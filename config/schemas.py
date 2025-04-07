@@ -102,18 +102,44 @@ class BuildGitConfig:
     push_template: str = "{remote_name} HEAD:refs/for/{remote_branch}"
     sdk_paths_to_add: List[str] = field(default_factory=lambda: ["ree", "run", "hee"])
 
+
+@dataclass
+class FileCopyOperation:
+    source_path: str
+    destination_path: str
+    is_wildcard: bool = False
+
 @dataclass
 class BuildTypeConfig:
     name: str
     enabled: bool = False
     pre_build_clean: bool = True
     post_build_git: bool = True
+    post_build_copy_operations: List[FileCopyOperation] = field(default_factory=list)
 
 @dataclass
 class BuildConfig:
     build_types: Dict[str, BuildTypeConfig] = field(default_factory=lambda: {
         "nebula-sdk": BuildTypeConfig(name="nebula-sdk"),
-        "nebula": BuildTypeConfig(name="nebula" ,enabled=True ,pre_build_clean=False),
+        "nebula": BuildTypeConfig(
+            name="nebula",
+            enabled=True,
+            pre_build_clean=False,
+            post_build_copy_operations=[
+                FileCopyOperation(source_path="products/mt8678-mix/out/gz.img", destination_path="gz.img"),
+                FileCopyOperation(source_path="vmm/out/nbl_vmm", destination_path="nbl_vmm"),
+                FileCopyOperation(source_path="vmm/out/nbl_vm_ctl", destination_path="nbl_vm_ctl"),
+                FileCopyOperation(source_path="vmm/out/nbl_vm_srv", destination_path="nbl_vm_srv"),
+                FileCopyOperation(source_path="vmm/out/libvmm.so", destination_path="libvmm.so"),
+                FileCopyOperation(source_path="third_party/prebuilts/libluajit/lib64/libluajit.so", destination_path="libluajit.so"),
+                FileCopyOperation(source_path="products/mt8678-mix/guest-configs/uos_alps_pv8678.lua", destination_path="uos_alps_pv8678.lua"),
+                FileCopyOperation(source_path="vmm/nbl_vm_srv/data/vm_srv_cfg_8678.pb.txt", destination_path="vm_srv_cfg_8678.pb.txt"),
+                FileCopyOperation(source_path="vmm/nbl_vmm/data/uos_mtk8678/uos_bootloader_lk2.pb.txt", destination_path="uos_bootloader_lk2.pb.txt"),
+                FileCopyOperation(source_path="vmm/out/symbols/*", destination_path="symbols/", is_wildcard=True),
+                FileCopyOperation(source_path="vmm/nbl_vmm/data/vm_audio_cfg.pb.txt", destination_path="vm_audio_cfg.pb.txt"),
+                FileCopyOperation(source_path="vmm/nbl_vm_srv/data/nbl_ta_monitor", destination_path="nbl_ta_monitor"),
+            ]
+        ),
         "TEE": BuildTypeConfig(name="TEE")
     })
     paths: BuildPathConfig = field(default_factory=BuildPathConfig)
