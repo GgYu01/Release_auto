@@ -1,3 +1,5 @@
+import re
+from urllib.parse import urlparse
 from typing import List, Optional, Dict, Any, Union
 from utils.custom_logger import Logger
 from utils.command_executor import CommandExecutor
@@ -182,3 +184,61 @@ class GitOperator:
         except Exception as e:
             self.logger.error(f"Unexpected error getting commit history for {repository_path}: {e}")
             return []
+
+    def get_commit_message(self, repository_path: str, commit_hash: str) -> Optional[str]:
+        try:
+            self.logger.info(f"Getting commit message for {commit_hash} in {repository_path}")
+            args = ["show", "-s", "--format=%B", commit_hash]
+            result = self._execute_git(repository_path, "show", args)
+            message = result.stdout.strip()
+            self.logger.info(f"Successfully retrieved commit message for {commit_hash}")
+            return message
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"Failed to get commit message for {commit_hash} in {repository_path}: {e.stderr}")
+            return None
+        except ValueError as e:
+            self.logger.error(f"Configuration error getting commit message in {repository_path}: {e}")
+            return None
+        except Exception as e:
+            self.logger.error(f"Unexpected error getting commit message for {commit_hash} in {repository_path}: {e}")
+            return None
+
+    def get_remote_url(self, repository_path: str, remote_name: str) -> Optional[str]:
+        try:
+            self.logger.info(f"Getting URL for remote '{remote_name}' in {repository_path}")
+            args = ["remote", "get-url", remote_name]
+            result = self._execute_git(repository_path, "remote", args)
+            url = result.stdout.strip()
+            self.logger.info(f"Successfully retrieved URL for remote '{remote_name}': {url}")
+            return url
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"Failed to get URL for remote '{remote_name}' in {repository_path}: {e.stderr}")
+            return None
+        except ValueError as e:
+            self.logger.error(f"Configuration error getting remote URL in {repository_path}: {e}")
+            return None
+        except Exception as e:
+            self.logger.error(f"Unexpected error getting remote URL for '{remote_name}' in {repository_path}: {e}")
+            return None
+
+
+
+def parse_gerrit_remote_info(remote_url: str) -> Dict[str, Optional[str]]:
+    parsed_url = urlparse(remote_url)
+    info = {
+        'user': None,
+        'host': None,
+        'port': None
+    }
+    if parsed_url.scheme == 'ssh':
+        info['host'] = parsed_url.hostname
+        info['user'] = parsed_url.username
+        info['port'] = str(parsed_url.port) if parsed_url.port else '29418' # Default Gerrit SSH port
+    # Add handling for other potential URL formats if necessary
+    return info
+
+def extract_change_id(commit_message: str) -> Optional[str]:
+    match = re.search(r'^\s*Change-Id:\s*(I[0-9a-f]{40})\s*$', commit_message, re.MULTILINE | re.IGNORECASE)
+    if match:
+        return match.group(1)
+    return None

@@ -45,6 +45,7 @@ class RepoManager:
                     analyze_commit=repo_config.default_analyze_commit,
                     generate_patch=repo_config.default_generate_patch,
                     special_branch_repos=repo_config.special_branch_repos,
+                    merge_config=repo_config.merge_config, # Pass merge_config
                 )
 
                 if repo_name in repo_config.special_branch_repos:
@@ -83,6 +84,7 @@ class RepoManager:
                     analyze_commit=repo_config.default_analyze_commit,
                     generate_patch=repo_config.default_generate_patch,
                     special_branch_repos=repo_config.special_branch_repos,
+                    merge_config=repo_config.merge_config, # Pass merge_config
                 )
                 if repo_name in repo_config.special_branch_repos:
                     git_repo_info.remote_branch = repo_config.special_branch_repos[repo_name].get("remote_branch", "origin/master")
@@ -111,6 +113,7 @@ class RepoManager:
                         local_branch=repo_config.local_branch if repo_config.local_branch else repo_config.remote_branch,
                         remote_name=repo_config.remote_name,
                         remote_branch=repo_config.remote_branch,
+                        merge_config=repo_config.merge_config, # Pass merge_config
                     )
                     repo_config.git_repos.append(git_repo_info)
                     logger.info(f"Added GitRepoInfo for {repo_config.repo_name}")

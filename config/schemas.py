@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Literal
 
 @dataclass
 class LoggingConfig:
@@ -27,6 +27,12 @@ class GitRepoInfo:
     special_branch_repos: Dict[str, Dict[str, str]] = field(default_factory=dict)
     push_template: Optional[str] = None
     logging_config: LoggingConfig = field(default_factory=LoggingConfig)
+    merge_config: Optional['MergeConfig'] = None
+
+
+@dataclass
+class MergeConfig:
+    merge_mode: Literal['auto', 'manual', 'disabled'] = 'disabled'
 
 @dataclass
 class RepoConfig:
@@ -34,6 +40,7 @@ class RepoConfig:
     repo_type: str
     path: str
     sync_strategy: Optional[str] = None
+    merge_config: Optional[MergeConfig] = None
     remote_name: Optional[str] = None
     remote_branch: Optional[str] = None
     local_branch: Optional[str] = None
