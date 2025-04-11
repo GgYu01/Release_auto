@@ -26,25 +26,25 @@ def main():
         repo_manager = RepoManager(all_repos_config)
         repo_manager.initialize_git_repos()
         
-        # Placeholder for where commit analysis/patching might populate commit data
-        # For now, create an empty map. This needs to be replaced with actual data later.
-        commits_to_merge_map: Dict[str, List[str]] = {}
-        logger.warning("Using placeholder empty commits_map for GerritMerger. This needs real data.")
+        # # Placeholder for where commit analysis/patching might populate commit data
+        # # For now, create an empty map. This needs to be replaced with actual data later.
+        # commits_to_merge_map: Dict[str, List[str]] = {}
+        # logger.warning("Using placeholder empty commits_map for GerritMerger. This needs real data.")
 
-        # Instantiate GitOperator and GerritMerger
-        git_operator = GitOperator(command_executor)
-        gerrit_merger = GerritMerger(command_executor, git_operator, logger)
+        # # Instantiate GitOperator and GerritMerger
+        # git_operator = GitOperator(command_executor)
+        # gerrit_merger = GerritMerger(command_executor, git_operator, logger)
 
-        # Get the list of GitRepoInfo objects
-        repos_to_process = list(all_repos_config.all_git_repos())
+        # # Get the list of GitRepoInfo objects
+        # repos_to_process = list(all_repos_config.all_git_repos())
 
-        # Perform Gerrit Merges
-        merge_success = gerrit_merger.process_merges(repos_to_process, commits_to_merge_map)
+        # # Perform Gerrit Merges
+        # merge_success = gerrit_merger.process_merges(repos_to_process, commits_to_merge_map)
 
-        if not merge_success:
-            logger.error("Gerrit merge process encountered errors. Check logs.")
-            # Decide if failure should halt the process, e.g., return 1
-            # return 1 # Optional: uncomment to halt on merge failure
+        # if not merge_success:
+        #     logger.error("Gerrit merge process encountered errors. Check logs.")
+        #     # Decide if failure should halt the process, e.g., return 1
+        #     # return 1 # Optional: uncomment to halt on merge failure
 
         # --- Resume other steps ---
 
@@ -54,17 +54,17 @@ def main():
         # tagging_config = TaggingConfig()
         # tagger = Tagger(tagging_config, command_executor)
         # tagger.tag_repositories()
-        build_system = BuildSystem(build_config, command_executor)
-        build_success = build_system.build()
+        # build_system = BuildSystem(build_config, command_executor)
+        # build_success = build_system.build()
         
-        if build_success:
-            # git_tag_fetcher = GitTagFetcher(command_executor, logger)
-            # git_tag_fetcher.update_repo_tags(all_repos_config)
-            logger.info("Build process completed successfully")
-            return 0
-        else:
-            logger.error("Build process failed")
-            return 1
+        # if build_success:
+        #     # git_tag_fetcher = GitTagFetcher(command_executor, logger)
+        #     # git_tag_fetcher.update_repo_tags(all_repos_config)
+        #     logger.info("Build process completed successfully")
+        #     return 0
+        # else:
+        #     logger.error("Build process failed")
+        #     return 1
 
         for git_repo in all_repos_config.all_git_repos():
             logger.info(f"Git Repo Name: {git_repo.repo_name}")

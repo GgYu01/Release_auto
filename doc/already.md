@@ -6,18 +6,20 @@
 *   **解决痛点:** 取代原有参数硬编码、手动操作繁琐、易出错的 Bash 脚本，提高发布流程的效率、可靠性和可维护性。
 *   **关键特性:**
     *   **多仓库统一管理:** 无缝处理不同类型（Git, Jiri, Repo）和来源的代码仓库。
-    *   **配置驱动:** 通过 Python 配置文件集中管理仓库信息、构建参数、发布选项、分支策略、标签规则等。
+    *   **配置驱动:** 通过 Python 配置文件集中管理仓库信息、构建参数、发布选项、分支策略、标签规则、合并策略等。
     *   **模块化设计:** 功能分离，易于理解、维护和扩展。
     *   **自动化流程:** 最小化人工干预，实现端到端的发布操作。
     *   **健壮性:** 包含详细日志、错误处理和状态反馈。
+    *   **Gerrit 集成:** 支持通过配置自动或手动触发 Gerrit 代码评审的合并。
+
 
 **2. 设计理念 (Design Philosophy)**
 
-*   **配置优于编码:** 尽可能将易变信息（路径、分支名、标签格式、开关等）放入配置文件，代码负责实现核心逻辑。
+*   **配置优于编码:** 尽可能将易变信息（路径、分支名、标签格式、开关、合并模式等）放入配置文件，代码负责实现核心逻辑。
 *   **显式优于隐式:** 配置项和代码逻辑应清晰表达意图，避免依赖模糊的约定或本地环境状态（如尽量不依赖本地未提交的修改）。
-*   **关注点分离:** 将仓库管理、命令执行、同步、构建、打标、分析、打包等功能解耦到独立的模块/类中。
-*   **抽象与封装:** 底层操作（如 `git`, `jiri`, `repo`, 文件操作）被封装在工具类中，上层逻辑调用这些抽象接口。
-*   **可扩展性:** 方便添加新的仓库类型、同步策略、构建步骤或发布目标。
+*   **关注点分离:** 将仓库管理、命令执行、同步、合并、构建、打标、分析、打包等功能解耦到独立的模块/类中。
+*   **抽象与封装:** 底层操作（如 `git`, `jiri`, `repo`, 文件操作，SSH 命令）被封装在工具类中，上层逻辑调用这些抽象接口。
+*   **可扩展性:** 方便添加新的仓库类型、同步策略、构建步骤、合并目标或发布目标。
 
 **3. 系统架构 (System Architecture)**
 
@@ -25,7 +27,7 @@
 
 *   **配置层 (`config/`)**:
     *   `schemas.py`: 定义所有配置项的数据结构 (Data Classes)，提供类型安全和默认值。
-    *   `repos_config.py`: 定义所有代码仓库的元数据（路径、类型、分支、所属父仓库等）。
+    *   `repos_config.py`: 定义所有代码仓库的元数据（路径、类型、分支、所属父仓库、合并配置等）。
     *   `sync_config.py`: 定义不同仓库类型的同步策略和具体操作步骤。
     *   `tagging_config.py`: 定义打标签相关的全局配置（时区、手动版本号等）。
     *   `logging_config.py`: 定义日志输出配置。
@@ -37,6 +39,7 @@
     *   `repo_manager.py` (`RepoManager`): 负责根据配置加载和初始化仓库信息，包括解析 Jiri/Repo manifest 文件，填充 `GitRepoInfo` 对象。
     *   `repo_updater.py` (`RepoPropertyUpdater`): 负责根据父仓库配置更新子仓库的属性（如继承默认分支、标签前缀等）。
     *   `sync/` (`RepoSynchronizer`, `ActionExecutor`): 根据 `sync_config.py` 中的策略，执行代码同步操作（checkout, pull, reset, clean 等）。
+    *   `merger.py` (`GerritMerger`)**: 负责处理 Gerrit 代码合并。根据 `MergeConfig` 配置（`auto`/`manual`），识别目标 Change-ID（直接提供或从 Commit Hash 解析），并通过 SSH (`gerrit review --submit`) 执行自动合并，或提示进行手动合并。依赖 `GitOperator` 获取远程 URL、Commit 消息，并使用 `CommandExecutor` 执行 SSH 命令。
     *   `builder.py` (`BuildSystem`): 负责执行具体的构建流程（nebula-sdk, nebula, TEE），包括环境准备、调用构建脚本/命令、文件操作和构建后的 Git 提交/推送。
     *   `tagger.py` (`Tagger`): 负责为仓库生成并应用 Git 标签，支持自动生成版本号（基于日期和序列）或使用手动指定的版本号。
     *   `git_tag_manager.py` (`GitTagFetcher`): 负责从 Git 仓库获取标签信息，特别是最新的和次新的标签，用于后续分析或版本确定。
@@ -47,7 +50,7 @@
     *   *(未来需要)* `deployer.py` (`Deployer`): 负责将打包好的发布件传输到目标服务器。
 
 *   **工具层 (`utils/`)**:
-    *   `command_executor.py` (`CommandExecutor`): 统一执行外部命令（Shell, Git, Jiri 等），提供日志记录和错误处理。
+    *   `command_executor.py` (`CommandExecutor`): 统一执行外部命令（Shell, Git, Jiri, SSH等），提供日志记录和错误处理。
     *   `custom_logger.py` (`Logger`): 提供基于 Loguru 的日志记录功能。
     *   `file_utils.py` (`FileOperator`, `construct_path`): 封装文件和目录操作。
     *   `git_utils.py` (`GitOperator`): 封装常用的 Git 命令，提供更健壮的接口。
@@ -57,7 +60,7 @@
     *   应用程序的主入口点。
     *   负责解析命令行参数（*未来可能*）。
     *   初始化所有组件。
-    *   根据配置和参数编排执行流程（同步 -> (打标?) -> 构建 -> (分析?) -> (打标?) -> (打包?) -> (发布?)）。*注意：当前代码中同步和打标在主流程被注释，构建是主要执行部分。*
+    *   根据配置和参数编排执行流程（初始化 -> 同步 -> (打标?) -> 构建 -> Gerrit 合并-> (分析?) -> (打标?) -> (打包?) -> (发布?)）。*注意：当前代码中同步和打标在主流程被注释，构建是主要执行部分。*
 
 **4. 已实现功能详解 (Implemented Features Details)**
 
@@ -70,6 +73,17 @@
     *   `RepoSynchronizer` 结合 `sync_config.py` 实现不同步策略。
     *   `ActionExecutor` 负责执行同步策略中定义的具体动作（git fetch, checkout, reset, clean, pull 等）。
     *   同步操作使用占位符 (`{local_branch}`, `{remote_name}`, `{remote_branch}`)，动态替换为仓库的具体信息。
+*   **Gerrit 变更合并 (`GerritMerger`)**:
+    *   **配置驱动:** 每个仓库可以通过 `RepoConfig` 中的 `merge_config` (包含 `merge_mode`) 来控制合并行为 (`auto`, `manual`, `disabled`)。
+    *   **目标识别:** 能够处理输入的标识符列表 (`commits_map`，**当前为空占位符**)。如果标识符是 Commit Hash，会尝试使用 `GitOperator.get_commit_message` 和 `utils.git_utils.extract_change_id` 来查找对应的 Change-ID。
+    *   **自动合并 (`auto`模式):**
+        *   使用 `GitOperator.get_remote_url` 获取仓库的远程 URL。
+        *   使用 `utils.git_utils.parse_gerrit_remote_info` 解析出 Gerrit 服务器的主机、用户（可选）和端口（默认为 29418）。
+        *   通过 `CommandExecutor` 执行 `ssh -p <port> <user>@<host> gerrit review --submit <change_id>` 命令来尝试自动合并。
+    *   **手动合并 (`manual`模式):**
+        *   记录清晰的日志信息，提示用户需要在 Gerrit 上手动合并指定的 Change-ID。
+    *   **依赖关系:** 需要 `CommandExecutor` 执行命令，`GitOperator` 获取 Git 信息。
+    *   **当前限制:** 依赖于外部提供的 `commits_map` 来确定要合并哪些变更，目前在 `release.py` 中使用空映射。
 *   **模块化的构建系统 (`BuildSystem`):**
     *   区分 `nebula-sdk`, `nebula`, `TEE` 三种构建类型，逻辑分离在不同方法中。
     *   通过 `BuildConfig` 控制是否启用特定构建、构建前清理、构建后 Git 操作。
@@ -124,16 +138,17 @@
     *   取消同步和打标逻辑的注释，并确定打标操作的确切执行时机（构建前？构建后？两次？）。
     *   集成 Commit 分析、Patch 生成、报告、打包、部署等新模块的调用。
     *   添加命令行参数解析 (`argparse`)，以支持更灵活的调用（如指定 TAG、选择执行步骤、覆盖配置项）。
-    *   实现手动/自动合并远端 MR 的选项（这可能需要与 Git 平台 API 集成，比较复杂）。
 *   **配置完善:**
     *   为新功能添加对应的配置项和 Schema（如 `ReleaseConfig`, `AnalysisConfig`）。
+    *   明确 commits_map 的数据来源配置方式
     *   明确全局参数（TAG、描述、CR 等）的配置位置。
 
 **6. 如何扩展 (How to Extend)**
 
-*   **添加新仓库:** 在 `repos_config.py` 中添加新的 `RepoConfig` 实例。如果需要特殊同步，在 `sync_config.py` 中添加或修改策略。
+*   **添加新仓库:** 在 `repos_config.py` 中添加新的 `RepoConfig` 实例。并按需配置其 merge_config。如果需要特殊同步，在 `sync_config.py` 中添加或修改策略。
 *   **添加新构建类型:** 在 `BuildConfig` 中定义新的 `BuildTypeConfig`，并在 `BuildSystem` 中添加对应的 `build_xxx` 方法和 `_handle_xxx_git_operations` 方法。
 *   **修改同步逻辑:** 编辑 `sync_config.py` 中对应策略的 `sync_actions`。
 *   **修改打标逻辑:** 编辑 `Tagger` 类或 `tag_utils.py`。
+*   **修改合并逻辑:** 编辑 `core/merger.py` (`GerritMerger`) 或相关的配置 (`MergeConfig`)。
 *   **添加新命令类型:** 在 `CommandExecutor` 中添加新的 `execute_xxx_command` 方法。
 
