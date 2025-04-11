@@ -18,7 +18,7 @@ class GitRepoInfo:
     local_branch: Optional[str] = None
     remote_branch: Optional[str] = None
     parent_repo: Optional[str] = None
-    commit_analyses: List[Dict] = field(default_factory=list)
+    commit_details: List[Dict[str, str]] = field(default_factory=list)
     newest_version: Optional[str] = None
     next_newest_version: Optional[str] = None
     analyze_commit: bool = False

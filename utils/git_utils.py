@@ -222,6 +222,64 @@ class GitOperator:
             return None
 
 
+    def get_commits_between(self, repository_path: str, start_ref: str, end_ref: str) -> List[Dict[str, str]]:
+        commit_details = []
+        try:
+            self.logger.info(f"Fetching commits between {start_ref} and {end_ref} in {repository_path}")
+            # Format: Hash<NULL>AuthorName<NULL>AuthorEmail<NULL>Body<RECORD_SEPARATOR>
+            format_string = "%H%x00%an%x00%ae%x00%B%x1E"
+            # Git log command: git log start_ref..end_ref --pretty=format:...
+            # Note: The range start_ref..end_ref excludes start_ref and includes end_ref.
+            range_spec = f"{start_ref}..{end_ref}"
+            args = ["log", range_spec, f"--pretty=format:{format_string}"]
+
+            result = self._execute_git(repository_path, "log", args)
+            raw_output = result.stdout
+
+            if not raw_output:
+                self.logger.info(f"No commits found between {start_ref} and {end_ref} in {repository_path}")
+                return []
+
+            # Split commits using the Record Separator (\x1E)
+            # Strip potential leading/trailing separators before splitting
+            raw_commits = raw_output.strip().strip('\x1E').split('\x1E')
+
+            for raw_commit in raw_commits:
+                if not raw_commit:
+                    continue
+                # Split fields using the Null byte (\x00)
+                parts = raw_commit.split('\x00')
+                if len(parts) == 4:
+                    commit_details.append({
+                        'hash': parts[0],
+                        'author_name': parts[1],
+                        'author_email': parts[2],
+                        'message_body': parts[3].strip() # Strip potential trailing newline
+                    })
+                else:
+                    # Log potentially sensitive commit data carefully (e.g., truncate)
+                    log_data = raw_commit[:100] + '...' if len(raw_commit) > 100 else raw_commit
+                    self.logger.warning(f"Skipping malformed commit data in {repository_path} between {start_ref}..{end_ref}. Parts found: {len(parts)}. Data snippet: {log_data}")
+
+            self.logger.info(f"Successfully retrieved {len(commit_details)} commits between {start_ref} and {end_ref} in {repository_path}")
+            return commit_details
+
+        except subprocess.CalledProcessError as e:
+            # Handle specific git errors like non-existent refs
+            stderr_lower = e.stderr.lower()
+            if "unknown revision or path not in the working tree" in stderr_lower or "invalid object name" in stderr_lower:
+                 self.logger.warning(f"Could not find refs {start_ref} or {end_ref} in {repository_path}. Error: {e.stderr.strip()}")
+            else:
+                self.logger.error(f"Git log command failed for {repository_path} between {start_ref}..{end_ref}: {e.stderr.strip()}")
+            return []
+        except ValueError as e: # Catch errors from _execute_git
+            self.logger.error(f"Configuration error getting commits between {start_ref}..{end_ref} in {repository_path}: {e}")
+            return []
+        except Exception as e:
+            self.logger.error(f"Unexpected error getting commits between {start_ref}..{end_ref} in {repository_path}: {e}", exc_info=True)
+            return []
+
+
 
 def parse_gerrit_remote_info(remote_url: str) -> Dict[str, Optional[str]]:
     parsed_url = urlparse(remote_url)

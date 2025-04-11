@@ -11,6 +11,7 @@ from config.tagging_config import TaggingConfig
 from core.tagger import Tagger
 from core.merger import GerritMerger
 from utils.git_utils import GitOperator
+from core.commit_analyzer import CommitAnalyzer
 
 logger = Logger("release")
 
@@ -26,6 +27,20 @@ def main():
         repo_manager = RepoManager(all_repos_config)
         repo_manager.initialize_git_repos()
         
+
+        # --- Initialize Core Components ---
+        git_operator = GitOperator(command_executor)
+        git_tag_fetcher = GitTagFetcher(command_executor, logger)
+        commit_analyzer = CommitAnalyzer(git_operator, logger)
+
+        # --- Fetch Tags --- 
+        # This step populates newest_version and next_newest_version in repo_info
+        git_tag_fetcher.update_repo_tags(all_repos_config)
+
+        # --- Analyze Commits ---
+        # This step uses the fetched tags to find commits and populates commit_details
+        commit_analyzer.analyze_all_repositories(all_repos_config)
+
         # # Placeholder for where commit analysis/patching might populate commit data
         # # For now, create an empty map. This needs to be replaced with actual data later.
         # commits_to_merge_map: Dict[str, List[str]] = {}
