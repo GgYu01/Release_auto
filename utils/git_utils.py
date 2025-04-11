@@ -231,7 +231,7 @@ class GitOperator:
             # Git log command: git log start_ref..end_ref --pretty=format:...
             # Note: The range start_ref..end_ref excludes start_ref and includes end_ref.
             range_spec = f"{start_ref}..{end_ref}"
-            args = ["log", range_spec, f"--pretty=format:{format_string}"]
+            args = [range_spec, f"--pretty=format:{format_string}"]
 
             result = self._execute_git(repository_path, "log", args)
             raw_output = result.stdout
