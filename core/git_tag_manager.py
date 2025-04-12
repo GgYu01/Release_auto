@@ -1,154 +1,227 @@
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional, List, Set, Dict, Any
 from utils.command_executor import CommandExecutor
 from utils.custom_logger import Logger
-from config.schemas import AllReposConfig
+from config.schemas import AllReposConfig, GitRepoInfo
 import re
 import subprocess
 from datetime import datetime
 
 class GitTagFetcher:
     def __init__(self, command_executor: CommandExecutor, logger: Logger):
-        self.command_executor = command_executor
-        self.logger = logger
+        self.command_executor: CommandExecutor = command_executor
+        self.logger: Logger = logger
 
-    def update_repo_tags(self, repos_config: AllReposConfig):
-        self.logger.info("Fetching and updating repository tags...")
+    def update_repo_tags(self, repos_config: AllReposConfig) -> None:
+        self.logger.info("Starting repository tag update process...")
         for repo_config in repos_config.repo_configs.values():
             for git_repo_info in repo_config.git_repos:
                 if git_repo_info.repo_type == "git":
-                    repo_path = git_repo_info.path
-                    local_branch = git_repo_info.local_branch
-                    tag_prefix = git_repo_info.tag_prefix
-                    remote_name = git_repo_info.remote_name or "origin"
+                    self._process_single_repo(git_repo_info)
+        self.logger.info("Repository tag update process finished.")
 
-                    if repo_path and local_branch:
-                        latest_tag, next_newest_tag = self.fetch_latest_tags(
-                            repo_path=repo_path,
-                            branch_name=local_branch,
-                            remote_name=remote_name,
-                            tag_prefix=tag_prefix
-                        )
-                        git_repo_info.newest_version = latest_tag
-                        git_repo_info.next_newest_version = next_newest_tag
-                        self.logger.info(f"Updated versions for repo: {git_repo_info.repo_name}, newest: {latest_tag}, next_newest: {next_newest_tag}")
-                    else:
-                        self.logger.warning(f"Repo path or local branch missing for {git_repo_info.repo_name}, skipping tag fetch")
-        self.logger.info("Repository tags updated")
+    def _process_single_repo(self, repo_info: GitRepoInfo) -> None:
+        repo_path = repo_info.path
+        local_branch = repo_info.local_branch
+        tag_prefix = repo_info.tag_prefix
+        remote_name = repo_info.remote_name or "origin"
+        repo_name = repo_info.repo_name
 
-    def fetch_latest_tags(self, repo_path: str, branch_name: str, remote_name: str = "origin", tag_prefix: Optional[str] = None) -> Tuple[Optional[str], Optional[str]]:
+        if not repo_path or not local_branch:
+            self.logger.warning(
+                f"Repo path or local branch missing for {repo_name}. "
+                f"Skipping tag fetch."
+            )
+            return
+
+        self.logger.info(
+            f"Processing tags for repo '{repo_name}' at path "
+            f"'{repo_path}', branch '{local_branch}', "
+            f"prefix '{tag_prefix or 'None'}'."
+        )
+
+        latest_tag, next_newest_tag = self.fetch_latest_tags(
+            repo_path=repo_path,
+            branch_name=local_branch,
+            remote_name=remote_name,
+            tag_prefix=tag_prefix
+        )
+        repo_info.newest_version = latest_tag
+        repo_info.next_newest_version = next_newest_tag
+        self.logger.info(
+            f"Updated versions for repo '{repo_name}': "
+            f"Newest='{latest_tag}', NextNewest='{next_newest_tag}'"
+        )
+
+    def _execute_git_command(
+        self,
+        repo_path: str,
+        command: str,
+        args: List[str]
+    ) -> str:
+        params = {"command": command, "args": args, "cwd": repo_path}
+        result = self.command_executor.execute("git_command", params)
+        return result.stdout.strip()
+
+    def _fetch_remote_tags(self, repo_path: str, remote_name: str) -> None:
+        self.logger.debug(f"Fetching tags from remote '{remote_name}'...")
+        fetch_args = [remote_name, "--tags", "--prune", "--force"]
+        self._execute_git_command(repo_path, "fetch", fetch_args)
+        self.logger.debug(f"Successfully fetched tags from {remote_name}.")
+
+    def _get_merged_tags(self, repo_path: str, branch_name: str) -> Set[str]:
+        self.logger.debug(f"Getting tags merged into branch '{branch_name}'...")
+        merged_args = ["--merged", branch_name]
+        output = self._execute_git_command(repo_path, "tag", merged_args)
+        merged_tags_set = set(output.splitlines())
+        self.logger.debug(
+            f"Found {len(merged_tags_set)} tags merged into '{branch_name}'."
+        )
+        return merged_tags_set
+
+    def _get_tags_with_dates(self, repo_path: str) -> str:
+        self.logger.debug("Listing tags with creation dates...")
+        list_args = [
+            "--sort=-creatordate",
+            "--format=%(refname:strip=2) %(creatordate:iso-strict)",
+            "refs/tags"
+        ]
+        output = self._execute_git_command(repo_path, "for-each-ref", list_args)
+        self.logger.debug("Successfully listed tags with dates.")
+        return output
+
+    def _parse_date(self, tag_name: str, date_str: str) -> Optional[datetime]:
+        parsed_date = None
+        modified_date_str = date_str
         try:
-            self.logger.info(f"Fetching tags for repo at {repo_path} on branch {branch_name} from remote {remote_name} with prefix '{tag_prefix or 'None'}'")
+            if date_str.endswith('Z'):
+                modified_date_str = date_str[:-1] + '+00:00'
+            parsed_date = datetime.fromisoformat(modified_date_str)
+        except ValueError as e:
+            self.logger.warning(
+                f"Could not parse date for tag '{tag_name}'. "
+                f"Original: '{date_str}', Attempted: '{modified_date_str}'. "
+                f"Error: {e}. Skipping tag."
+            )
+        return parsed_date
 
-            # Step 1: Fetch tags from remote
+    def _extract_sequence(self, tag_name: str) -> int:
+        sequence_num = 0
+        try:
+            sequence_part = tag_name.split('_')[-1]
+            sequence_num = int(sequence_part)
+        except (IndexError, ValueError):
+            self.logger.warning(
+                f"Could not extract sequence number from tag '{tag_name}'. "
+                f"Using default 0 for sorting."
+            )
+        return sequence_num
+
+    def fetch_latest_tags(
+        self,
+        repo_path: str,
+        branch_name: str,
+        remote_name: str = "origin",
+        tag_prefix: Optional[str] = None
+    ) -> Tuple[Optional[str], Optional[str]]:
+        try:
+            self._fetch_remote_tags(repo_path, remote_name)
+
             try:
-                fetch_params = {
-                    "command": "fetch",
-                    "args": [remote_name, "--tags", "--prune", "--force"], # Added --force for robustness
-                    "cwd": repo_path
-                }
-                self.command_executor.execute("git_command", fetch_params)
-                self.logger.debug(f"Successfully fetched tags from {remote_name} for {repo_path}")
+                merged_tags_set = self._get_merged_tags(repo_path, branch_name)
             except subprocess.CalledProcessError as e:
-                self.logger.error(f"Error executing git fetch for tags in {repo_path}: {e.stderr}")
+                self.logger.error(
+                    f"Error getting merged tags for branch '{branch_name}' "
+                    f"in {repo_path}: {e.stderr}. Cannot determine relevant tags."
+                )
                 return None, None
             except ValueError as e:
-                 self.logger.error(f"Configuration error during git fetch for tags in {repo_path}: {e}")
-                 return None, None
-
-            # Step 2: List tags with dates
-            try:
-                # Get tags with strict ISO date format
-                list_tags_params = {
-                    "command": "for-each-ref",
-                    "args": [
-                        "--sort=-creatordate", # Git sorts primarily by date
-                        "--format=%(refname:strip=2) %(creatordate:iso-strict)", # tag_name YYYY-MM-DDTHH:MM:SSZ
-                        "refs/tags"
-                    ],
-                    "cwd": repo_path
-                }
-                result = self.command_executor.execute("git_command", list_tags_params)
-            except subprocess.CalledProcessError as e:
-                self.logger.error(f"Error executing git for-each-ref in {repo_path}: {e.stderr}")
-                return None, None
-            except ValueError as e:
-                 self.logger.error(f"Configuration error during git for-each-ref in {repo_path}: {e}")
-                 return None, None
-
-            output = result.stdout.strip()
-            if not output:
-                self.logger.warning(f"No tags found in repository {repo_path} after fetch")
+                self.logger.error(
+                    f"Configuration error getting merged tags in {repo_path}: {e}"
+                )
                 return None, None
 
-            # Step 3: Parse, Filter, and Extract Sequence Number
-            valid_tags_data = []
-            tag_lines = output.split("\n")
+            tags_output = self._get_tags_with_dates(repo_path)
+            if not tags_output:
+                self.logger.warning(f"No tags found in repository {repo_path}.")
+                return None, None
+
+            valid_tags_data: List[Dict[str, Any]] = []
+            tag_lines = tags_output.split("\n")
 
             for line in tag_lines:
                 if not line: continue
-                parts = line.strip().split(" ", 1) # Split only on the first space
+                parts = line.strip().split(" ", 1)
+                if len(parts) != 2:
+                    self.logger.warning(f"Could not parse tag line: '{line}'")
+                    continue
 
-                if len(parts) == 2:
-                    tag_name, date_str = parts
+                tag_name, date_str = parts
 
-                    # Filter by prefix FIRST
-                    if tag_prefix and not tag_name.startswith(tag_prefix):
-                        self.logger.debug(f"Skipping tag '{tag_name}' due to prefix mismatch (Expected: '{tag_prefix}')")
-                        continue
+                if tag_prefix and not tag_name.startswith(tag_prefix):
+                    self.logger.debug(f"Skipping tag '{tag_name}': prefix mismatch.")
+                    continue
 
-                    # Robust Date Parsing
-                    parsed_date = None
-                    modified_date_str = date_str # Keep original for logging
-                    try:
-                        if date_str.endswith('Z'):
-                            modified_date_str = date_str[:-1] + '+00:00'
-                            self.logger.debug(f"Modified date string for tag '{tag_name}': '{date_str}' -> '{modified_date_str}'")
-                        # Now parse the potentially modified string
-                        parsed_date = datetime.fromisoformat(modified_date_str)
-                        self.logger.debug(f"Successfully parsed date for tag '{tag_name}': {parsed_date}")
-                    except ValueError as e:
-                        self.logger.warning(f"Could not parse date for tag '{tag_name}'. Original: '{date_str}', Attempted: '{modified_date_str}'. Error: {e}. Skipping tag.")
-                        continue # Skip this tag if date parsing fails
+                parsed_date = self._parse_date(tag_name, date_str)
+                if parsed_date is None:
+                    continue
 
-                    # Sequence Number Extraction (Example: 'prefix_YYYY_MMDD_NN')
-                    sequence_num = 0 # Default if extraction fails
-                    try:
-                        # Attempt to extract the last part after '_' as sequence number
-                        sequence_part = tag_name.split('_')[-1]
-                        sequence_num = int(sequence_part)
-                        self.logger.debug(f"Extracted sequence number {sequence_num} for tag '{tag_name}'")
-                    except (IndexError, ValueError):
-                         self.logger.warning(f"Could not extract sequence number from tag '{tag_name}'. Using default 0 for sorting.")
-                         # Continue processing the tag, but it will sort with sequence 0
+                sequence_num = self._extract_sequence(tag_name)
 
-                    # Store valid tag data for sorting
-                    valid_tags_data.append({'name': tag_name, 'date': parsed_date, 'seq': sequence_num})
-                else:
-                    self.logger.warning(f"Could not parse tag line format: '{line}'")
+                if tag_name not in merged_tags_set:
+                    self.logger.debug(
+                        f"Skipping tag '{tag_name}': not merged into "
+                        f"branch '{branch_name}'."
+                    )
+                    continue
 
+                self.logger.debug(f"Tag '{tag_name}' is valid.")
+                valid_tags_data.append(
+                    {'name': tag_name, 'date': parsed_date, 'seq': sequence_num}
+                )
 
-            # Step 4: Sort by Date (desc) and Sequence (desc)
             if not valid_tags_data:
-                self.logger.warning(f"No valid tags found matching prefix '{tag_prefix}' after parsing in {repo_path}")
+                self.logger.warning(
+                    f"No valid tags found matching prefix '{tag_prefix}' "
+                    f"and merged into '{branch_name}' in {repo_path}."
+                )
                 return None, None
 
             try:
-                # Sort using a lambda function for the two keys
-                valid_tags_data.sort(key=lambda x: (x['date'], x['seq']), reverse=True)
-                self.logger.debug(f"Sorted tags ({len(valid_tags_data)}): {[t['name'] for t in valid_tags_data]}")
+                valid_tags_data.sort(
+                    key=lambda x: (x['date'], x['seq']), reverse=True
+                )
+                self.logger.debug(
+                    f"Sorted valid tags ({len(valid_tags_data)}): "
+                    f"{[t['name'] for t in valid_tags_data]}"
+                )
             except Exception as e:
-                 self.logger.error(f"Error sorting tags for {repo_path}: {e}", exc_info=True)
-                 return None, None # Cannot proceed if sorting fails
+                self.logger.error(f"Error sorting tags for {repo_path}: {e}")
+                return None, None
 
-            # Step 5: Select Latest and Next Newest
             latest_tag = valid_tags_data[0]['name']
-            next_newest_tag = valid_tags_data[1]['name'] if len(valid_tags_data) > 1 else None
+            next_newest_tag = (
+                valid_tags_data[1]['name'] if len(valid_tags_data) > 1 else None
+            )
 
-            self.logger.info(f"Found tags in {repo_path} matching prefix '{tag_prefix}' - Latest: {latest_tag}, Next Newest: {next_newest_tag}")
+            self.logger.info(
+                f"Found relevant tags in {repo_path} - "
+                f"Latest: {latest_tag}, Next Newest: {next_newest_tag}"
+            )
             return latest_tag, next_newest_tag
 
-        except Exception as e:
-            self.logger.error(f"Unexpected error fetching tags for {repo_path}: {e}", exc_info=True)
+        except subprocess.CalledProcessError as e:
+            self.logger.error(
+                f"Git command failed during tag fetch for {repo_path}: {e.stderr}"
+            )
             return None, None
-
-# Removed _parse_tag_dates method as logic is now integrated into fetch_latest_tags
+        except ValueError as e:
+            self.logger.error(
+                f"Configuration error during tag fetch for {repo_path}: {e}"
+            )
+            return None, None
+        except Exception as e:
+            self.logger.error(
+                f"Unexpected error fetching tags for {repo_path}: {e}",
+                exc_info=True
+            )
+            return None, None
