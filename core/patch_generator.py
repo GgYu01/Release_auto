@@ -147,9 +147,11 @@ class PatchGenerator:
                 self.logger.warning(f"Could not extract sequence number from patch filename: {filename}. Assigning high sort value.")
                 return 9999 # Place improperly named files at the end
             sorted_patch_paths = sorted(generated_patch_paths, key=sort_key)
+            self.logger.debug(f"Sorted Patch Files ({repo_info.repo_name}): {[os.path.basename(p) for p in sorted_patch_paths]}")
 
             # 2. Retrieve ordered commit details (assuming CommitAnalyzer provides them in order)
             ordered_commits = repo_info.commit_details if repo_info.commit_details else []
+            self.logger.debug(f"Ordered Commits ({repo_info.repo_name}): {[c.id[:7] for c in ordered_commits]}")
 
             # 3. Strict Length Validation
             if len(sorted_patch_paths) != len(ordered_commits):
@@ -170,6 +172,7 @@ class PatchGenerator:
             # 4. Iterate using zip to correlate patch path and commit detail
             for patch_file_path, commit_detail in zip(sorted_patch_paths, ordered_commits):
                 patch_filename = os.path.basename(patch_file_path)
+                correlation_index = ordered_commits.index(commit_detail) # Get index for logging
                 commit_id = commit_detail.id # Use commit ID directly from the CommitDetail object
 
                 # Calculate the final relative path for the ZIP archive
@@ -187,6 +190,7 @@ class PatchGenerator:
                 # which will be correctly handled by link_nebula_patches later.
                 commit_detail.patch_path = final_relative_patch_path
                 self.logger.debug(f"Assigned patch path '{final_relative_patch_path}' to commit {commit_id[:7]} in {repo_info.repo_name} based on order.")
+                self.logger.debug(f"Correlated [#{correlation_index + 1}]: Commit {commit_id[:7]} ({repo_info.repo_name}) <-> Patch '{patch_filename}' -> Target: '{final_relative_patch_path}'")
 
                 # --- Check if this commit is "special" (using the current commit_detail) ---
                 # Condition 1: Is the repo path in the list of special source paths?
@@ -202,9 +206,12 @@ class PatchGenerator:
                     # Store the mapping: special commit ID -> final *relative* patch path
                     # This map is used by link_nebula_patches
                     special_commit_patch_map[commit_id] = final_relative_patch_path
-                    self.logger.info(f"Recorded special commit patch mapping (by order): {commit_id[:7]} -> {final_relative_patch_path}")
+                    # Removed duplicate log line, corrected version follows
+                    self.logger.debug(f"Special Commit Check Passed: Commit {commit_id[:7]} from repo {repo_info.repo_name}")
+                    self.logger.info(f"Recorded special commit patch mapping (by order): Commit {commit_detail.id[:7]} ({repo_info.repo_name}) -> '{final_relative_patch_path}'")
         self.logger.info(f"Finished generating patches. Found {len(special_commit_patch_map)} special commit patches to potentially link to Nebula.")
         return special_commit_patch_map
+# Removed incorrectly placed log line below, will re-insert correctly
 
 
     def link_nebula_patches(
@@ -263,6 +270,7 @@ class PatchGenerator:
                         associated_patch_path = patch_path
                         self.logger.debug(f"Found patch path '{patch_path}' from special commit {special_commit_id[:7]} for Nebula child commit {nebula_commit.id[:7]} ({nebula_child_repo.repo_name}).")
                         break # Stop after finding the first one
+                        # Log the specific special commit ID that provided the link
                     else:
                          self.logger.debug(f"Special commit {special_commit_id[:7]} linked to {nebula_commit.id[:7]}, but no patch path found in special_commit_patch_map.")
 
@@ -272,6 +280,7 @@ class PatchGenerator:
                 if associated_patch_path:
                     linked_count += 1
                     self.logger.info(f"Linked patch '{associated_patch_path}' to Nebula child commit {nebula_commit.id[:7]} ({nebula_child_repo.repo_name})")
+                    self.logger.info(f"Linked patch '{associated_patch_path}' to Nebula child commit {nebula_commit.id[:7]} ({nebula_child_repo.repo_name}) via Special Commit {special_commit_id[:7]}")
                 else:
                     self.logger.warning(f"Nebula child commit {nebula_commit.id[:7]} ({nebula_child_repo.repo_name}) had associated special commit IDs ({[sid[:7] for sid in special_commit_ids]}), but none had a resolvable patch path in the map.")
                     unlinked_commits +=1
