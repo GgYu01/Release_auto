@@ -88,7 +88,6 @@ def main() -> int:
         # commit_analyzer.analyze_all_repositories(all_repos_config) # Old logic disabled
 
         # Placeholder for other existing steps if needed
-        # logger.warning("Skipping other original steps like merge, sync, tag, build for now.")
 
         # Existing verbose logging (kept as per original structure)
         for git_repo in all_repos_config.all_git_repos():
@@ -98,6 +97,16 @@ def main() -> int:
             if git_repo.analyze_commit:
                 logger.info(f"Commit Details Count: {len(git_repo.commit_details)}")
             logger.info("-" * 40)
+            if git_repo.analyze_commit and git_repo.commit_details:
+                logger.info(f"--- Commit Details for {git_repo.repo_name} ---")
+                for commit_dict in git_repo.commit_details:
+                    logger.info(f"  Author: {commit_dict['author']}")
+                    logger.info(f"  Commit: {commit_dict['id']}")
+                    message_lines = commit_dict['message'].splitlines()
+                    logger.info(f"  Message: {message_lines[0] if message_lines else ''}")
+                    for line in message_lines[1:]:
+                         logger.info(f"           {line}")
+                    logger.info(f"  {'-'*20}")
 
         logger.info("Release process finished.")
         return 0

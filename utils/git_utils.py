@@ -251,10 +251,9 @@ class GitOperator:
                 parts = raw_commit.split('\x00')
                 if len(parts) == 4:
                     commit_details.append({
-                        'hash': parts[0],
-                        'author_name': parts[1],
-                        'author_email': parts[2],
-                        'message_body': parts[3].strip() # Strip potential trailing newline
+                        'id': parts[0],
+                        'author': f"{parts[1]} <{parts[2]}>",
+                        'message': parts[3].strip()
                     })
                 else:
                     # Log potentially sensitive commit data carefully (e.g., truncate)
