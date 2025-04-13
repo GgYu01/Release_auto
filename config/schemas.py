@@ -1,10 +1,21 @@
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Literal
+from typing import List, Dict, Optional, Literal, Any
+
+
+@dataclass
+class CommitDetail:
+    id: str
+    author: str
+    message: str
+    patch_path: Optional[Any] = None # Can be str or List[str] for Nebula
+    commit_module: Optional[List[str]] = None
+
 
 @dataclass
 class LoggingConfig:
     level: str = "INFO"
     format: str = "%(asctime)s - %(name)s:%(funcName)s:%(lineno)d - %(levelname)s - %(message)s"
+
 
 @dataclass
 class GitRepoInfo:
@@ -18,7 +29,8 @@ class GitRepoInfo:
     local_branch: Optional[str] = None
     remote_branch: Optional[str] = None
     parent_repo: Optional[str] = None
-    commit_details: List[Dict[str, str]] = field(default_factory=list)
+    commit_details: List[CommitDetail] = field(default_factory=list) # Updated type
+    relative_path_in_parent: Optional[str] = None # New field
     newest_version: Optional[str] = None
     next_newest_version: Optional[str] = None
     analyze_commit: bool = False
@@ -33,6 +45,7 @@ class GitRepoInfo:
 @dataclass
 class MergeConfig:
     merge_mode: Literal['auto', 'manual', 'disabled'] = 'disabled'
+
 
 @dataclass
 class RepoConfig:
@@ -55,10 +68,12 @@ class RepoConfig:
     special_branch_repos: Dict[str, str] = field(default_factory=dict)
     logging_config: LoggingConfig = field(default_factory=LoggingConfig)
 
+
 @dataclass
 class SyncAction:
     action_type: str
     action_params: Dict
+
 
 @dataclass
 class SyncStrategyConfig:
@@ -66,23 +81,49 @@ class SyncStrategyConfig:
     parent_types: List[str]
     sync_actions: List[SyncAction]
 
+
+@dataclass
+class PatchConfig:
+    temp_patch_dir: str = "/tmp/gr_patches" # Example default
+
+
+@dataclass
+class PackageConfig:
+    project_name: str = "GR-Release-Automation-Tool" # Example default
+    zip_name_template: str = "{project_name}_{latest_tag}.zip"
+
+
+@dataclass
+class DeployConfig:
+    scp_host: str
+    scp_user: str
+    scp_remote_path: str
+    scp_port: int = 22
+
+
 @dataclass
 class AllReposConfig:
     repo_configs: Dict[str, RepoConfig] = field(default_factory=dict)
     version_source_repo_name: Optional[str] = None
+    package_config: PackageConfig = field(default_factory=PackageConfig) # Integrated
+    deploy_config: Optional[DeployConfig] = None # Integrated (Optional)
+    patch_config: PatchConfig = field(default_factory=PatchConfig) # Integrated
 
     def all_git_repos(self):
         for repo_config in self.repo_configs.values():
             for git_repo in repo_config.git_repos:
                 yield git_repo
 
+
 @dataclass
 class AllSyncConfigs:
     sync_configs: Dict[str, SyncStrategyConfig] = field(default_factory=dict)
 
+
 @dataclass
 class VersionIdentifierConfig:
     manual_identifier: Optional[str] = None
+
 
 @dataclass
 class BuildPathConfig:
@@ -97,6 +138,7 @@ class BuildPathConfig:
     tee_temp: str = "~/grt/teetemp"
     tee_kernel: str = "~/alps/vendor/mediatek/proprietary/trustzone/grt/source/common/kernel"
     yocto_hypervisor: str = "~/yocto/prebuilt/hypervisor/grt"
+
 
 @dataclass
 class BuildGitConfig:
@@ -117,6 +159,7 @@ class FileCopyOperation:
     destination_path: str
     is_wildcard: bool = False
 
+
 @dataclass
 class BuildTypeConfig:
     name: str
@@ -124,6 +167,7 @@ class BuildTypeConfig:
     pre_build_clean: bool = True
     post_build_git: bool = True
     post_build_copy_operations: List[FileCopyOperation] = field(default_factory=list)
+
 
 @dataclass
 class BuildConfig:

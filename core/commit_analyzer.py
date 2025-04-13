@@ -3,7 +3,7 @@ import traceback
 from typing import List, Dict
 from utils.git_utils import GitOperator
 from utils.custom_logger import Logger
-from config.schemas import AllReposConfig, GitRepoInfo
+from config.schemas import AllReposConfig, GitRepoInfo, CommitDetail # Added CommitDetail
 from utils.tag_utils import construct_tag
 
 class CommitAnalyzer:
@@ -50,14 +50,26 @@ class CommitAnalyzer:
 
                 self.logger.info(f"Analyzing commits for {repo_info.repo_name} between constructed tags: {start_ref} -> {end_ref}")
 
-                commit_details: List[Dict[str, str]] = self.git_operator.get_commits_between(
+                raw_commit_details: List[Dict[str, str]] = self.git_operator.get_commits_between(
                     repository_path=repo_info.repo_path,
                     start_ref=start_ref,
                     end_ref=end_ref
                 )
 
-                repo_info.commit_details = commit_details
-                self.logger.info(f"Found {len(commit_details)} commits for {repo_info.repo_name} between {start_ref} and {end_ref}.")
+                typed_commit_details: List[CommitDetail] = []
+                for detail_dict in raw_commit_details:
+                    typed_commit_details.append(
+                        CommitDetail(
+                            id=detail_dict['id'],
+                            author=detail_dict['author'],
+                            message=detail_dict['message'],
+                            patch_path=None,  # Initialize as None
+                            commit_module=None # Initialize as None
+                        )
+                    )
+
+                repo_info.commit_details = typed_commit_details
+                self.logger.info(f"Found {len(typed_commit_details)} commits for {repo_info.repo_name} between {start_ref} and {end_ref}.")
 
             except Exception as e:
                 self.logger.error(f"Error during commit analysis for repository {repo_info.repo_name}: {e}")

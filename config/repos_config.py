@@ -25,7 +25,7 @@ grt_config = RepoConfig(
     remote_branch="release-spm.mt8678_2024_1230",
     local_branch="release-spm.mt8678_2024_1230",
     default_tag_prefix="release-spm.mt8678_",
-    default_analyze_commit=False,
+    default_analyze_commit=True,
     default_generate_patch=True,
 )
 

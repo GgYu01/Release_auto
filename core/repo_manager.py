@@ -29,13 +29,16 @@ class RepoManager:
             for project in root.findall("projects/project"):
                 repo_name = project.get("name")
                 remote_branch = project.get("remotebranch")
-                repo_path = construct_path(repo_config.path, project.get("path"))
+                sub_project_path_attr = project.get("path")
+                repo_path = construct_path(repo_config.path, sub_project_path_attr)
+                relative_path = sub_project_path_attr # Manifest 'path' is the relative path
 
                 git_repo_info = GitRepoInfo(
                     repo_name=repo_name,
                     repo_parent=repo_config.repo_name,
                     path=repo_config.path,
                     repo_path=repo_path,
+                    relative_path_in_parent=relative_path, # Added field
                     repo_type="git",
                     tag_prefix=repo_config.default_tag_prefix,
                     remote_name=repo_config.remote_name,
@@ -68,13 +71,16 @@ class RepoManager:
             
             for project in root.findall("project"):
                 repo_name = project.get("name")
-                repo_path = construct_path(repo_config.path, project.get("path"))                
+                sub_project_path_attr = project.get("path")
+                repo_path = construct_path(repo_config.path, sub_project_path_attr)
+                relative_path = sub_project_path_attr # Manifest 'path' is the relative path
 
                 git_repo_info = GitRepoInfo(
                     repo_name=repo_name,
                     repo_parent=repo_config.repo_name,
                     path=repo_config.path,
                     repo_path=repo_path,
+                    relative_path_in_parent=relative_path, # Added field
                     repo_type="git",
                     tag_prefix=repo_config.default_tag_prefix,
                     remote_name=repo_config.remote_name,

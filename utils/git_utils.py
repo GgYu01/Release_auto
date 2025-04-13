@@ -280,6 +280,69 @@ class GitOperator:
 
 
 
+    def format_patch(self, repository_path: str, start_ref: str, end_ref: str, output_dir: str) -> List[str]:
+        """
+        Generates patch files for commits between start_ref and end_ref.
+
+        Args:
+            repository_path: The path to the git repository.
+            start_ref: The starting commit reference (exclusive).
+            end_ref: The ending commit reference (inclusive).
+            output_dir: The directory to save the generated patch files.
+
+        Returns:
+            A list of absolute paths to the generated patch files, or an empty list on failure.
+        """
+        patch_files: List[str] = []
+        try:
+            self.logger.info(f"Generating patches for {repository_path} between {start_ref}..{end_ref} into {output_dir}")
+
+            # Ensure output directory exists (though git format-patch should create it)
+            os.makedirs(output_dir, exist_ok=True)
+
+            range_spec = f"{start_ref}..{end_ref}"
+            args = [range_spec, "--output-directory", output_dir]
+
+            # Execute format-patch command
+            self._execute_git(repository_path, "format-patch", args)
+
+            # Git format-patch doesn't reliably output filenames if it fails partially.
+            # So, we list the directory contents *after* successful execution.
+            self.logger.info(f"Git format-patch command executed successfully for {repository_path}. Checking output directory...")
+
+            for filename in os.listdir(output_dir):
+                if filename.endswith(".patch"):
+                    # Construct absolute path
+                    full_path = os.path.abspath(os.path.join(output_dir, filename))
+                    patch_files.append(full_path)
+
+            if not patch_files:
+                 self.logger.warning(f"format-patch command ran for {repository_path}, but no .patch files were found in {output_dir}. Range {start_ref}..{end_ref} might be empty or contain no changes.")
+            else:
+                 self.logger.info(f"Successfully generated {len(patch_files)} patch files in {output_dir} for {repository_path}")
+
+            return patch_files
+
+        except subprocess.CalledProcessError as e:
+            stderr_lower = e.stderr.lower()
+            if "unknown revision or path not in the working tree" in stderr_lower or "invalid object name" in stderr_lower:
+                self.logger.warning(f"Could not generate patches for {repository_path}: Invalid refs {start_ref} or {end_ref}. Error: {e.stderr.strip()}")
+            elif "did not produce patches" in stderr_lower:
+                 self.logger.warning(f"Git format-patch command for {repository_path} indicated no patches were produced (range {start_ref}..{end_ref} likely empty or no changes). Error: {e.stderr.strip()}")
+            else:
+                self.logger.error(f"Git format-patch command failed for {repository_path}: {e.stderr.strip()}")
+            return []
+        except ValueError as e: # Catch errors from _execute_git
+            self.logger.error(f"Configuration error during format-patch for {repository_path}: {e}")
+            return []
+        except FileNotFoundError:
+             self.logger.error(f"Error during format-patch: Repository path {repository_path} or output directory {output_dir} not found after attempted creation.")
+             return []
+        except Exception as e:
+            self.logger.error(f"Unexpected error during format-patch for {repository_path}: {e}", exc_info=True)
+            return []
+
+
 def parse_gerrit_remote_info(remote_url: str) -> Dict[str, Optional[str]]:
     parsed_url = urlparse(remote_url)
     info = {
