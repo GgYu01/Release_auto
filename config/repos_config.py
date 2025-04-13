@@ -25,8 +25,8 @@ grt_config = RepoConfig(
     remote_branch="release-spm.mt8678_2024_1230",
     local_branch="release-spm.mt8678_2024_1230",
     default_tag_prefix="release-spm.mt8678_",
-    default_analyze_commit=True,
-    default_generate_patch=False,
+    default_analyze_commit=False,
+    default_generate_patch=True,
 )
 
 grt_be_config = RepoConfig(
@@ -93,11 +93,8 @@ alps_config = RepoConfig(
 
 all_repos_config = AllReposConfig(
     repo_configs={
-        # "grpower": grpower_config,
         "grt": grt_config,
-        # "grt_be": grt_be_config,
-        # "nebula": nebula_config,
-        # "yocto": yocto_config,
-        # "alps": alps_config,
-    }
+        "nebula": nebula_config,
+    },
+    version_source_repo_name="grt"
 )

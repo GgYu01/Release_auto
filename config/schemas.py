@@ -69,6 +69,7 @@ class SyncStrategyConfig:
 @dataclass
 class AllReposConfig:
     repo_configs: Dict[str, RepoConfig] = field(default_factory=dict)
+    version_source_repo_name: Optional[str] = None
 
     def all_git_repos(self):
         for repo_config in self.repo_configs.values():
@@ -143,7 +144,7 @@ class BuildConfig:
                 FileCopyOperation(source_path="vmm/nbl_vm_srv/data/vm_srv_cfg_8678.pb.txt", destination_path="vm_srv_cfg_8678.pb.txt"),
                 FileCopyOperation(source_path="vmm/nbl_vmm/data/uos_mtk8678/uos_bootloader_lk2.pb.txt", destination_path="uos_bootloader_lk2.pb.txt"),
                 FileCopyOperation(source_path="vmm/out/symbols/*", destination_path="symbols/", is_wildcard=True),
-                FileCopyOperation(source_path="vmm/nbl_vmm/data/vm_audio_cfg.pb.txt", destination_path="vm_audio_cfg.pb.txt"),
+                FileCopyOperation(source_path="vmm/nbl_vm_srv/data/vm_audio_cfg.pb.txt", destination_path="vm_audio_cfg.pb.txt"),
                 FileCopyOperation(source_path="vmm/nbl_vm_srv/data/nbl_ta_monitor", destination_path="nbl_ta_monitor"),
             ]
         ),
