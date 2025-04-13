@@ -2,7 +2,7 @@
 
 **1. 项目概述与目标 (Project Overview & Goals)**
 
-*   **核心目标:** 创建一个自动化的 Python 工具，用于管理涉及多个代码仓库（独立 Git、Jiri 管理、Repo 管理）的复杂发布流程。该流程包括代码同步、构建（区分不同环境如 HEE/TEE）、版本标记（打 Tag）、变更分析、补丁生成、产物打包和发布。
+*   **核心目标:** 创建一个自动化的 Python 工具，用于管理涉及多个代码仓库（独立 Git、Jiri 管理、Repo 管理）的复杂发布流程。该流程包括代码同步、基于中心版本源的变更分析、构建（区分不同环境如 HEE/TEE）、版本标记（打 Tag）、变更分析、补丁生成、产物打包和发布。
 *   **解决痛点:** 取代原有参数硬编码、手动操作繁琐、易出错的 Bash 脚本，提高发布流程的效率、可靠性和可维护性。
 *   **关键特性:**
     *   **多仓库统一管理:** 无缝处理不同类型（Git, Jiri, Repo）和来源的代码仓库。
@@ -15,7 +15,7 @@
 
 **2. 设计理念 (Design Philosophy)**
 
-*   **配置优于编码:** 尽可能将易变信息（路径、分支名、标签格式、开关、合并模式等）放入配置文件，代码负责实现核心逻辑。
+*   **配置优于编码:** 尽可能将易变信息（路径、分支名、标签格式、开关、合并模式、版本源仓库等）放入配置文件，代码负责实现核心逻辑。
 *   **显式优于隐式:** 配置项和代码逻辑应清晰表达意图，避免依赖模糊的约定或本地环境状态（如尽量不依赖本地未提交的修改）。
 *   **关注点分离:** 将仓库管理、命令执行、同步、合并、构建、打标、分析、打包等功能解耦到独立的模块/类中。
 *   **抽象与封装:** 底层操作（如 `git`, `jiri`, `repo`, 文件操作，SSH 命令）被封装在工具类中，上层逻辑调用这些抽象接口。
@@ -27,7 +27,14 @@
 
 *   **配置层 (`config/`)**:
     *   `schemas.py`: 定义所有配置项的数据结构 (Data Classes)，提供类型安全和默认值。
+        *   `GitRepoInfo`: - 包含 `commit_details: List[Dict[str, str]]` 用于存储分析后的 Commit 信息（替代了旧的 `commit_analyses`）。
+        *   `AllReposConfig`: - 包含 `version_source_repo_name: Optional[str]` 字段，用于指定哪个仓库的标签决定全局版本。
+        *   `BuildConfig`: TEE 构建配置中 `vm_audio_cfg.pb.txt` 路径已修正。
     *   `repos_config.py`: 定义所有代码仓库的元数据（路径、类型、分支、所属父仓库、合并配置等）。
+        *   - `AllReposConfig` 实例现在包含 `version_source_repo_name="grt"`。
+        *   - `grt` 仓库配置中 `default_analyze_commit=False`, `default_generate_patch=True`。
+        *   - `grt_be` 仓库配置中 `default_analyze_commit=True`, `default_generate_patch=True` (*注意：grt_be 当前在 `all_repos_config` 中被注释*）。
+        *   - 当前 `all_repos_config` 仅激活了 "grt" 和 "nebula" 两个仓库配置。
     *   `sync_config.py`: 定义不同仓库类型的同步策略和具体操作步骤。
     *   `tagging_config.py`: 定义打标签相关的全局配置（时区、手动版本号等）。
     *   `logging_config.py`: 定义日志输出配置。
@@ -43,7 +50,12 @@
     *   `builder.py` (`BuildSystem`): 负责执行具体的构建流程（nebula-sdk, nebula, TEE），包括环境准备、调用构建脚本/命令、文件操作和构建后的 Git 提交/推送。
     *   `tagger.py` (`Tagger`): 负责为仓库生成并应用 Git 标签，支持自动生成版本号（基于日期和序列）或使用手动指定的版本号。
     *   `git_tag_manager.py` (`GitTagFetcher`): 负责从 Git 仓库获取标签信息，特别是最新的和次新的标签，用于后续分析或版本确定。
-    *   *(未来需要)* `analyzer.py` (`CommitAnalyzer`): 负责分析指定版本范围内的 Git Commit，提取信息，识别特殊标记。
+    *   `commit_analyzer.py` (`CommitAnalyzer`): - 负责分析指定版本范围内的 Git Commit。
+        *   接收全局的 `newest_version_identifier` 和 `next_newest_version_identifier`。
+        *   遍历配置中 `analyze_commit=True` 的仓库。
+        *   使用 `tag_utils.construct_tag` 结合仓库自身的 `tag_prefix` 和全局版本标识符，生成该仓库对应的 `start_ref` 和 `end_ref`。
+        *   调用 `GitOperator.get_commits_between(start_ref, end_ref)` 获取 Commit 列表。
+        *   将获取到的 Commit 详细信息（ID, Author, Message）存储在 `GitRepoInfo.commit_details` 列表中。
     *   *(未来需要)* `patch_generator.py` (`PatchGenerator`): 负责根据 Commit 分析结果生成 Patch 文件。
     *   *(未来需要)* `packager.py` (`ReleasePackager`): 负责根据配置将分析结果（Commit Log, Patches）和构建产物打包成发布件。
     *   *(未来需要)* `reporter.py` (`ExcelReporter`): 负责将 Commit 信息写入指定的 Excel 文件。
@@ -60,7 +72,7 @@
     *   应用程序的主入口点。
     *   负责解析命令行参数（*未来可能*）。
     *   初始化所有组件。
-    *   根据配置和参数编排执行流程（初始化 -> 同步 -> (打标?) -> 构建 -> Gerrit 合并-> (分析?) -> (打标?) -> (打包?) -> (发布?)）。*注意：当前代码中同步和打标在主流程被注释，构建是主要执行部分。*
+    *   根据配置和参数编排执行流程（初始化 -> 同步 -> 打标 -> 构建 -> Gerrit 合并 -> 打标 -> 分析 -> -> 打包 -> 发布。
 
 **4. 已实现功能详解 (Implemented Features Details)**
 
@@ -92,11 +104,18 @@
     *   为每种构建类型实现了独立的 Git 操作（add, commit, push），使用不同的提交信息模板和目标分支/路径（定义在 `BuildGitConfig`）。
     *   构建环境（如 `PATH`, `SDK_APP_DIR` for `build_all.sh`）在执行命令时动态设置。
 *   **版本标签管理:**
-    *   `GitTagFetcher` 能够获取远程仓库的标签，并根据创建日期排序，找出最新和次新标签（考虑 `tag_prefix`）。
+    *   `GitTagFetcher` 能够获取远程仓库的标签，过滤非合并到目标分支的标签，并基于创建日期和序列号 (`_NN`) 精确排序，找出最新和次新标签。
     *   `Tagger` 能够为所有配置的仓库打标签：
         *   支持通过 `TaggingConfig` 手动指定版本标识符 (`manual_version_identifier`)。
         *   若未手动指定，则自动生成 `YYYY_MMDD_NN` 格式的版本标识符，`NN` 基于当天已存在的标签自动递增。
         *   使用配置的时区 (`timezone`) 确定当前日期。
+*   **中心化版本确定与 Commit 分析:** **新增/已实现**
+    *   通过 `AllReposConfig.version_source_repo_name` 指定版本来源仓库。
+    *   `release.py` 调用 `GitTagFetcher` 获取源仓库的最新/次新 Tag。
+    *   `release.py` 使用 `tag_utils.extract_version_identifier` 提取全局版本标识符。
+    *   `CommitAnalyzer` 使用全局标识符和各仓库的 `tag_prefix`（通过 `tag_utils.construct_tag`）来确定分析范围 (`start_ref..end_ref`)。
+    *   `GitOperator.get_commits_between` 获取指定范围的 Commit 详细信息 (ID, Author, Message)。
+    *   分析结果存储在 `GitRepoInfo.commit_details: List[Dict[str, str]]` 中。
 *   **健壮的底层工具:**
     *   `CommandExecutor` 提供了统一的命令执行接口，包含详细的日志（执行命令、目录、成功/失败、输出预览/错误信息）。
     *   `GitOperator` 封装了 Git 命令，提高了易用性和可靠性（如处理 "nothing to commit" 的情况）。
@@ -107,11 +126,6 @@
 
 根据你的设计思路，以下功能是后续需要开发或完善的：
 
-*   **Commit 分析 (`core/analyzer.py`):**
-    *   实现 `GitOperator.get_commits_between(tag1, tag2)`。
-    *   实现 `CommitAnalyzer` 类，根据 `GitRepoInfo` 的 `analyze_commit` 标志，调用 `get_commits_between`。
-    *   解析 Commit 消息，识别特殊标记（需要定义标记规则）。
-    *   在 `GitRepoInfo` 中存储分析结果（Commit 列表，包含 ID、消息、作者、日期、特殊标记等）。
 *   **Patch 生成 (`core/patch_generator.py`):**
     *   实现 `PatchGenerator` 类。
     *   根据 `GitRepoInfo` 的 `generate_patch` 标志和 Commit 分析结果。
