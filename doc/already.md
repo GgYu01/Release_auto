@@ -6,7 +6,7 @@
 *   **解决痛点:** 取代原有参数硬编码、手动操作繁琐、易出错的 Bash 脚本，提高发布流程的效率、可靠性和可维护性。
 *   **关键特性:**
     *   **多仓库统一管理:** 无缝处理不同类型（Git, Jiri, Repo）和来源的代码仓库。
-    *   **配置驱动:** 通过 Python 配置文件集中管理仓库信息、构建参数、发布选项、分支策略、标签规则、合并策略等。
+    *   **配置驱动:** 通过 Python 配置文件集中管理仓库信息、构建参数、发布选项、分支策略、标签规则、合并策略、Patch 生成规则、打包规则、部署目标等。
     *   **模块化设计:** 功能分离，易于理解、维护和扩展。
     *   **自动化流程:** 最小化人工干预，实现端到端的发布操作。
     *   **健壮性:** 包含详细日志、错误处理和状态反馈。
@@ -15,9 +15,9 @@
 
 **2. 设计理念 (Design Philosophy)**
 
-*   **配置优于编码:** 尽可能将易变信息（路径、分支名、标签格式、开关、合并模式、版本源仓库等）放入配置文件，代码负责实现核心逻辑。
+*   **配置优于编码:** 尽可能将易变信息（路径、分支名、标签格式、开关、合并模式、版本源仓库、临时目录、包名模板、部署服务器等）放入配置文件，代码负责实现核心逻辑。
 *   **显式优于隐式:** 配置项和代码逻辑应清晰表达意图，避免依赖模糊的约定或本地环境状态（如尽量不依赖本地未提交的修改）。
-*   **关注点分离:** 将仓库管理、命令执行、同步、合并、构建、打标、分析、打包等功能解耦到独立的模块/类中。
+*   **关注点分离:** 将仓库管理、命令执行、同步、合并、构建、打标、分析、Patch 生成、打包、部署等功能解耦到独立的模块/类中。
 *   **抽象与封装:** 底层操作（如 `git`, `jiri`, `repo`, 文件操作，SSH 命令）被封装在工具类中，上层逻辑调用这些抽象接口。
 *   **可扩展性:** 方便添加新的仓库类型、同步策略、构建步骤、合并目标或发布目标。
 
@@ -32,7 +32,7 @@
         *   `BuildConfig`: TEE 构建配置中 `vm_audio_cfg.pb.txt` 路径已修正。
     *   `repos_config.py`: 定义所有代码仓库的元数据（路径、类型、分支、所属父仓库、合并配置等）。
         *   - `AllReposConfig` 实例现在包含 `version_source_repo_name="grt"`。
-        *   - `grt` 仓库配置中 `default_analyze_commit=False`, `default_generate_patch=True`。
+        *   - `grt` 仓库配置中 `default_analyze_commit=True`, `default_generate_patch=True`。
         *   - `grt_be` 仓库配置中 `default_analyze_commit=True`, `default_generate_patch=True` (*注意：grt_be 当前在 `all_repos_config` 中被注释*）。
         *   - 当前 `all_repos_config` 仅激活了 "grt" 和 "nebula" 两个仓库配置。
     *   `sync_config.py`: 定义不同仓库类型的同步策略和具体操作步骤。
@@ -56,10 +56,28 @@
         *   使用 `tag_utils.construct_tag` 结合仓库自身的 `tag_prefix` 和全局版本标识符，生成该仓库对应的 `start_ref` 和 `end_ref`。
         *   调用 `GitOperator.get_commits_between(start_ref, end_ref)` 获取 Commit 列表。
         *   将获取到的 Commit 详细信息（ID, Author, Message）存储在 `GitRepoInfo.commit_details` 列表中。
-    *   *(未来需要)* `patch_generator.py` (`PatchGenerator`): 负责根据 Commit 分析结果生成 Patch 文件。
-    *   *(未来需要)* `packager.py` (`ReleasePackager`): 负责根据配置将分析结果（Commit Log, Patches）和构建产物打包成发布件。
+    *   `patch_generator.py` (`PatchGenerator`) :
+        *   负责根据 `generate_patch=True` 的配置和 Commit 分析结果生成 Patch 文件。
+        *   调用 `GitOperator.format_patch` 在临时目录中生成 patch。
+        *   **关联 Patch 与 Commit**: 通过排序确保生成的 patch 文件（如 `0001-xxx.patch`）与 `CommitAnalyzer` 输出的有序 Commit 列表一一对应。
+        *   计算并存储最终的相对路径 (`repo_parent/relative_path/patch_filename`) 到 `CommitDetail.patch_path`。
+        *   **特殊 Commit 处理**: 识别来自特定源仓库（如 `grt`, `alps/.../grt`）且 Commit Message 包含特殊标记（`SPECIAL_PATTERNS`: TEE, nebula-sdk 等）的 Commit，并记录其 ID 与 Patch 路径的映射。
+        *   **Nebula 链接**:
+            *   根据 `release.py` 提供的映射关系，将 Nebula 子仓库 Commit 的 `patch_path` 指向其关联的特殊 Commit 的 Patch 路径（取第一个匹配）。
+            *   根据所有关联的特殊 Commit 的 Message，推断并填充 Nebula 子仓库 Commit 的 `commit_module` 列表。
+        *   提供临时 Patch 目录清理功能。
+    *   `packager.py` (`ReleasePackager`):
+        *   负责根据配置将分析结果（主要是 Patch 文件）打包成发布件。
+        *   读取 `PackageConfig` 获取项目名和 ZIP 文件名模板。
+        *   遍历 `all_repos_config` 中的 `GitRepoInfo`。
+        *   查找 `CommitDetail` 中已填充的 `patch_path`。
+        *   从临时目录中找到对应的 Patch 源文件。
+        *   将 Patch 文件按照 `CommitDetail.patch_path` 定义的相对路径添加到 ZIP 压缩包中。
+    *   `deployer.py` (`Deployer`):
+        *   负责将打包好的发布件传输到目标服务器。
+        *   读取 `DeployConfig` 获取 SCP 连接信息（主机、用户、路径、端口）。
+        *   使用 `CommandExecutor` 执行 `scp` 命令上传 ZIP 文件。
     *   *(未来需要)* `reporter.py` (`ExcelReporter`): 负责将 Commit 信息写入指定的 Excel 文件。
-    *   *(未来需要)* `deployer.py` (`Deployer`): 负责将打包好的发布件传输到目标服务器。
 
 *   **工具层 (`utils/`)**:
     *   `command_executor.py` (`CommandExecutor`): 统一执行外部命令（Shell, Git, Jiri, SSH等），提供日志记录和错误处理。
@@ -72,7 +90,7 @@
     *   应用程序的主入口点。
     *   负责解析命令行参数（*未来可能*）。
     *   初始化所有组件。
-    *   根据配置和参数编排执行流程（初始化 -> 同步 -> 打标 -> 构建 -> Gerrit 合并 -> 打标 -> 分析 -> -> 打包 -> 发布。
+    *   根据配置和参数编排执行流程（初始化 -> 同步 -> 打标 -> 构建 -> Gerrit 合并 -> 打标 -> 分析 Commit -> 识别特殊源 -> 生成 Patch -> 处理 Nebula 映射 -> 链接 Nebula Patch -> 打包 -> 发布。
 
 **4. 已实现功能详解 (Implemented Features Details)**
 
@@ -109,13 +127,31 @@
         *   支持通过 `TaggingConfig` 手动指定版本标识符 (`manual_version_identifier`)。
         *   若未手动指定，则自动生成 `YYYY_MMDD_NN` 格式的版本标识符，`NN` 基于当天已存在的标签自动递增。
         *   使用配置的时区 (`timezone`) 确定当前日期。
-*   **中心化版本确定与 Commit 分析:** **新增/已实现**
+*   **中心化版本确定与 Commit 分析:**
     *   通过 `AllReposConfig.version_source_repo_name` 指定版本来源仓库。
     *   `release.py` 调用 `GitTagFetcher` 获取源仓库的最新/次新 Tag。
     *   `release.py` 使用 `tag_utils.extract_version_identifier` 提取全局版本标识符。
     *   `CommitAnalyzer` 使用全局标识符和各仓库的 `tag_prefix`（通过 `tag_utils.construct_tag`）来确定分析范围 (`start_ref..end_ref`)。
     *   `GitOperator.get_commits_between` 获取指定范围的 Commit 详细信息 (ID, Author, Message)。
     *   分析结果存储在 `GitRepoInfo.commit_details: List[Dict[str, str]]` 中。
+*   **Patch 生成与处理 (`PatchGenerator`)**:
+    *   **生成**: 对配置了 `generate_patch=True` 的仓库（排除 Nebula 子仓库和特定 Yocto 路径），使用 `GitOperator.format_patch` 在指定版本范围内生成 Patch 文件到临时目录 (`<temp_dir>/<parent_slug>/<repo_slug>/`)。
+    *   **关联**: 按顺序将生成的 Patch 文件（如 `0001-xxx.patch`）与 `CommitAnalyzer` 提供的有序 Commit 列表关联。
+    *   **路径存储**: 计算 Patch 在最终包内的相对路径 (`<parent>/<relative_path>/<patch_filename>`)，并存储在 `CommitDetail.patch_path` 中。
+    *   **特殊识别**: 识别特定源仓库（`grt`, `alps/.../grt`）中 Message 包含特定模式 (`SPECIAL_PATTERNS`) 的 Commit，记录其 ID 和 Patch 路径映射。
+    *   **Nebula 链接**:
+        *   在 `release.py` 中，特殊 Commit 被识别并从源仓库的 `commit_details` 中移除。
+        *   `PatchGenerator.link_nebula_patches` 使用映射关系，将 Nebula 子仓库 `CommitDetail` 的 `patch_path` 指向关联的（第一个匹配的）特殊 Commit 的 Patch 路径。
+        *   根据所有关联的特殊 Commit Message，推断并填充 Nebula 子仓库 `CommitDetail` 的 `commit_module` 列表 (如 `['TEE']`, `['nebula-sdk']`)。
+    *   **清理**: 提供清理临时 Patch 目录的功能。
+*   **发布包生成 (`ReleasePackager`)**:
+    *   根据 `PackageConfig` 中的模板生成 ZIP 文件名。
+    *   遍历所有仓库的 `CommitDetail` 列表。
+    *   收集所有 `patch_path` 不为空的 Commit 对应的 Patch 文件（从临时目录读取源文件）。
+    *   将 Patch 文件按照 `CommitDetail.patch_path` 指定的路径添加到 ZIP 压缩包内。
+*   **部署 (`Deployer`)**:
+    *   读取 `DeployConfig` 中的 SCP 连接参数。
+    *   使用 `CommandExecutor` 调用 `scp` 命令，将生成的 ZIP 包上传到指定的远程服务器路径。
 *   **健壮的底层工具:**
     *   `CommandExecutor` 提供了统一的命令执行接口，包含详细的日志（执行命令、目录、成功/失败、输出预览/错误信息）。
     *   `GitOperator` 封装了 Git 命令，提高了易用性和可靠性（如处理 "nothing to commit" 的情况）。
@@ -126,27 +162,10 @@
 
 根据你的设计思路，以下功能是后续需要开发或完善的：
 
-*   **Patch 生成 (`core/patch_generator.py`):**
-    *   实现 `PatchGenerator` 类。
-    *   根据 `GitRepoInfo` 的 `generate_patch` 标志和 Commit 分析结果。
-    *   调用 `git format-patch` 生成 Patch 文件（区分是针对特殊 Commit 还是整个范围）。
-    *   将生成的 Patch 文件路径记录到 `GitRepoInfo` 的 Commit 分析结果中。
-    *   实现临时 Patch 文件的管理和清理。
-    *   实现 Patch 路径强制覆盖逻辑（根据配置将特定 Patch 应用到其他仓库的 Commit 记录中）。
 *   **Excel 报告 (`core/reporter.py`):**
     *   引入 Excel 操作库（如 `openpyxl`）。
     *   实现 `ExcelReporter` 类，读取配置的 Excel 模板或路径。
     *   将 `CommitAnalyzer` 生成的 Commit 信息按规则写入 Excel。
-*   **打包 (`core/packager.py`):**
-    *   实现 `ReleasePackager` 类。
-    *   根据配置定义打包结构（如创建 `MTK_{tag}` 目录）。
-    *   收集 Patch 文件（根据 `GitRepoInfo` 中的记录）和 Commit Log（可能来自 Excel 或直接生成）。
-    *   将文件按相对路径放入指定目录结构。
-    *   使用 `shutil.make_archive` 创建压缩包。
-*   **部署 (`core/deployer.py`):**
-    *   引入传输库（如 `paramiko` for SFTP/SCP）。
-    *   实现 `Deployer` 类，读取目标服务器配置。
-    *   将生成的压缩包传输到指定位置。
 *   **Jiri Snapshot:** 在适当的流程节点（可能是打标后或发布前）调用 `jiri snapshot` 命令（通过 `CommandExecutor`）。
 *   **流程编排 (`release.py`):**
     *   取消同步和打标逻辑的注释，并确定打标操作的确切执行时机（构建前？构建后？两次？）。
