@@ -1,14 +1,20 @@
 import os
 import re
 import shutil
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, Optional, List, Tuple, Set # Added Set
 
 from config.schemas import AllReposConfig, GitRepoInfo, CommitDetail, PatchConfig
 from utils.git_utils import GitOperator
 from utils.custom_logger import Logger
 from utils.tag_utils import construct_tag
-# Removed import of non-existent ensure_directory_exists
 
+# Define special patterns globally for consistency
+SPECIAL_PATTERNS: Dict[str, str] = {
+    "nebula-hyper": "] thyp-sdk: ",
+    "nebula-sdk": "] nebula-sdk: ",
+    "TEE": "] tee: ",
+}
+SPECIAL_PATTERNS_LIST: List[str] = list(SPECIAL_PATTERNS.values())
 
 class PatchGenerator:
     def __init__(
@@ -23,269 +29,290 @@ class PatchGenerator:
         self.git_operator = git_operator
         self.logger = logger
 
-    # Removed _parse_commit_id_from_patch as it's no longer used.
-    # Patch correlation is now done by order.
     def generate_patches(
         self,
         all_repos_config: AllReposConfig,
-        version_info: Dict, # Expects keys like 'newest_id', 'next_newest_id'
+        version_info: Dict, # Expects 'newest_id', 'next_newest_id'
         patch_config: PatchConfig,
-        special_source_repo_infos: List[GitRepoInfo] # New parameter
+        special_source_repo_infos: List[GitRepoInfo] # Passed from release.py
     ) -> Dict[str, str]:
         """
-        Generates patch files for all configured repositories, identifying special commits.
+        Generates patch files using 'git format-patch' for eligible repositories,
+        correlates them with commit details by order, assigns relative patch paths,
+        and identifies special commits, returning a map of their IDs to patch paths.
+
+        IMPORTANT: This function expects 'all_repos_config' to contain commit details
+                   *before* any special commits have been removed by other processes
+                   (like _process_nebula_mappings in release.py).
 
         Args:
-            all_repos_config: The configuration object containing all repo info.
-            version_info: Dictionary containing version identifiers ('newest_id', 'next_newest_id').
+            all_repos_config: The configuration containing all repo info and UNMODIFIED commit details.
+            version_info: Dictionary containing 'newest_id' and 'next_newest_id'.
             patch_config: Configuration for patch generation (e.g., temp_patch_dir).
-            special_source_repo_infos: List of GitRepoInfo objects for repos considered sources of special commits.
+            special_source_repo_infos: List of GitRepoInfo for repos considered sources of special commits.
 
         Returns:
-            A dictionary mapping special commit IDs to their final generated patch paths.
+            A dictionary mapping special commit IDs to their final generated relative patch paths.
+            Returns an empty dictionary if critical errors occur (e.g., temp dir creation failure).
         """
         self.logger.info("Starting patch generation process...")
         temp_patch_dir = patch_config.temp_patch_dir
         special_commit_patch_map: Dict[str, str] = {} # special_commit_id -> final_relative_patch_path
 
+        # --- 1. Prepare Temporary Directory ---
         try:
-            # Use os.makedirs directly
             os.makedirs(temp_patch_dir, exist_ok=True)
             self.logger.info(f"Ensured temporary patch directory exists: {temp_patch_dir}")
-        except Exception as e:
+        except OSError as e:
             self.logger.critical(f"Failed to create or access temporary patch directory {temp_patch_dir}: {e}. Aborting patch generation.")
-            return special_commit_patch_map # Return empty map on critical failure
+            return special_commit_patch_map # Return empty map
 
+        # --- 2. Get Version IDs ---
         newest_id = version_info.get('newest_id')
         next_newest_id = version_info.get('next_newest_id')
-
         if not newest_id or not next_newest_id:
             self.logger.error("Missing 'newest_id' or 'next_newest_id' in version_info. Cannot generate patches.")
             return special_commit_patch_map
 
-        # Define patterns for special commits (consistent with release.py)
-        special_patterns = {
-            "nebula-hyper": "] thyp-sdk: ",
-            "nebula-sdk": "] nebula-sdk: ",
-            "TEE": "] tee: ",
-        }
-        special_patterns_list = list(special_patterns.values()) # For easier checking
-
-        # Create a set of paths for the special source repos for efficient lookup
-        special_source_paths = {
+        # --- 3. Identify Special Source Repos ---
+        special_source_paths: Set[str] = {
             repo.repo_path.replace('\\', '/') for repo in special_source_repo_infos if repo.repo_path
         }
         self.logger.debug(f"Special source repo paths for patch check: {special_source_paths}")
 
-        # Identify the specific yocto grt repo for exclusion (still relevant)
-        yocto_grt_parent = 'yocto'
-        yocto_grt_name = 'prebuilt/hypervisor/grt' # Assuming this is the name in manifest/config
+        # --- 4. Define Exclusion ---
+        # Specific repo to exclude from patch generation (matches requirement)
+        excluded_repo_parent = 'yocto'
+        excluded_repo_name = 'prebuilt/hypervisor/grt'
 
+        # --- 5. Iterate Through Repositories ---
         for repo_info in all_repos_config.all_git_repos():
-            self.logger.debug(f"Processing repository: {repo_info.repo_name} (Parent: {repo_info.repo_parent})")
+            repo_log_name = f"{repo_info.repo_parent}/{repo_info.repo_name}" if repo_info.repo_parent else repo_info.repo_name
+            self.logger.debug(f"Processing repository: {repo_log_name} (Path: {repo_info.repo_path})")
 
-            # --- Skip Conditions ---
+            # --- 5a. Skip Conditions ---
             if not repo_info.generate_patch:
-                self.logger.debug(f"Skipping patch generation for {repo_info.repo_name}: generate_patch is False.")
+                self.logger.debug(f"Skipping {repo_log_name}: generate_patch is False.")
                 continue
-
-            # Skip Nebula *child* repositories (parent is 'nebula')
             if repo_info.repo_parent == 'nebula':
-                self.logger.info(f"Skipping patch generation for Nebula child repo: {repo_info.repo_name} (Parent: {repo_info.repo_parent})")
+                self.logger.info(f"Skipping Nebula child repo: {repo_log_name}")
                 continue
-
-            # Skip specific yocto/prebuilt/hypervisor/grt
-            if repo_info.repo_parent == yocto_grt_parent and repo_info.repo_name == yocto_grt_name:
-                 self.logger.info(f"Skipping patch generation for excluded repo: {yocto_grt_parent}/{yocto_grt_name}")
+            if repo_info.repo_parent == excluded_repo_parent and repo_info.repo_name == excluded_repo_name:
+                 self.logger.info(f"Skipping explicitly excluded repo: {excluded_repo_parent}/{excluded_repo_name}")
                  continue
-
-            # Check if repo_path is valid
             if not repo_info.repo_path or not os.path.isdir(repo_info.repo_path):
-                self.logger.warning(f"Skipping patch generation for {repo_info.repo_name}: Invalid or missing repo_path '{repo_info.repo_path}'.")
+                self.logger.warning(f"Skipping {repo_log_name}: Invalid or missing repo_path '{repo_info.repo_path}'.")
                 continue
 
-            # REMOVED: Check for relative_path_in_parent is None.
-            # We should attempt patch generation even for top-level manifest repos if configured.
-            # The path calculation below should handle None or empty string correctly.
-
-
-            # --- Determine Refs ---
+            # --- 5b. Determine Refs ---
             try:
                 start_ref = construct_tag(repo_info.tag_prefix, next_newest_id)
                 end_ref = construct_tag(repo_info.tag_prefix, newest_id)
-                self.logger.debug(f"Constructed tags for {repo_info.repo_name}: {start_ref}..{end_ref}")
+                self.logger.debug(f"Refs for {repo_log_name}: {start_ref}..{end_ref}")
             except ValueError as e:
-                self.logger.error(f"Error constructing tags for {repo_info.repo_name}: {e}. Skipping patch generation.")
+                self.logger.error(f"Error constructing tags for {repo_log_name}: {e}. Skipping.")
                 continue
 
-            # --- Generate Patches ---
-            # Create a sub-directory within the temp dir specific to this repo to avoid filename clashes if repo names collide across parents
-            repo_temp_patch_subdir = os.path.join(temp_patch_dir, repo_info.repo_parent.replace('/', '_'), repo_info.repo_name.replace('/', '_'))
-            # Use os.makedirs directly
-            os.makedirs(repo_temp_patch_subdir, exist_ok=True)
+            # --- 5c. Create Repo-Specific Temp Subdir ---
+            repo_parent_slug = repo_info.repo_parent.replace('/', '_') if repo_info.repo_parent else 'no_parent'
+            repo_name_slug = repo_info.repo_name.replace('/', '_')
+            repo_temp_patch_subdir = os.path.join(temp_patch_dir, repo_parent_slug, repo_name_slug)
+            try:
+                os.makedirs(repo_temp_patch_subdir, exist_ok=True)
+            except OSError as e:
+                self.logger.error(f"Failed to create repo temp subdir {repo_temp_patch_subdir} for {repo_log_name}: {e}. Skipping.")
+                continue
 
+            # --- 5d. Generate Patches using GitOperator ---
             generated_patch_paths = self.git_operator.format_patch(
                 repository_path=repo_info.repo_path,
                 start_ref=start_ref,
                 end_ref=end_ref,
-                output_dir=repo_temp_patch_subdir # Use repo-specific subdir
+                output_dir=repo_temp_patch_subdir
             )
 
             if not generated_patch_paths:
-                self.logger.warning(f"No patch files generated or returned by format_patch for {repo_info.repo_name} in range {start_ref}..{end_ref}.")
-                continue
+                self.logger.warning(f"No patch files generated by format_patch for {repo_log_name} in range {start_ref}..{end_ref}. This might be expected if there are no commits.")
+                # Check commit details - if they exist but no patches were made, it's potentially an issue
+                if repo_info.commit_details:
+                    self.logger.warning(f"Commit details exist for {repo_log_name} but no patches were generated. Check Git history and refs.")
+                continue # Continue to next repo
 
-            # --- Process Generated Patches by Order ---
-            self.logger.info(f"Processing {len(generated_patch_paths)} generated patches for {repo_info.repo_name} by correlating order...")
+            # --- 5e. Correlate Patches and Commits by Order (CRITICAL FIX) ---
+            self.logger.info(f"Correlating {len(generated_patch_paths)} generated patches for {repo_log_name}...")
 
-            # 1. Sort generated patch paths numerically by sequence number
+            # Sort generated patch paths numerically (0001, 0002, ...)
             def sort_key(path: str) -> int:
                 filename = os.path.basename(path)
                 match = re.match(r'^(\d{4})-.*\.patch$', filename)
-                if match:
-                    return int(match.group(1))
-                self.logger.warning(f"Could not extract sequence number from patch filename: {filename}. Assigning high sort value.")
-                return 9999 # Place improperly named files at the end
-            sorted_patch_paths = sorted(generated_patch_paths, key=sort_key)
-            self.logger.debug(f"Sorted Patch Files ({repo_info.repo_name}): {[os.path.basename(p) for p in sorted_patch_paths]}")
+                return int(match.group(1)) if match else 9999
+            try:
+                sorted_patch_paths = sorted(generated_patch_paths, key=sort_key)
+                # Basic check for unexpected filenames after sort
+                if any(sort_key(p) == 9999 for p in sorted_patch_paths):
+                     self.logger.warning(f"Found patches with unexpected filenames in {repo_temp_patch_subdir}. Correlation might be affected.")
+            except Exception as e:
+                self.logger.error(f"Error sorting patch files for {repo_log_name}: {e}. Skipping correlation for this repo.")
+                continue
 
-            # 2. Retrieve ordered commit details (assuming CommitAnalyzer provides them in order)
+            # Retrieve ORDERED commit details (MUST be from the unmodified list)
             ordered_commits = repo_info.commit_details if repo_info.commit_details else []
-            self.logger.debug(f"Ordered Commits ({repo_info.repo_name}): {[c.id[:7] for c in ordered_commits]}")
 
-            # 3. Strict Length Validation
+            # **VALIDATION:** Check if counts match
             if len(sorted_patch_paths) != len(ordered_commits):
                 self.logger.critical(
-                    f"CRITICAL MISMATCH: Number of sorted patch files ({len(sorted_patch_paths)}) "
-                    f"does not match number of commits ({len(ordered_commits)}) for repository "
-                    f"'{repo_info.repo_name}' in range {start_ref}..{end_ref}. "
-                    f"This indicates a failure in the 1:1 correlation assumption. "
-                    f"Skipping patch processing for this repository."
+                    f"CRITICAL MISMATCH in {repo_log_name}: "
+                    f"Patches generated ({len(sorted_patch_paths)}) != Commits found ({len(ordered_commits)}) "
+                    f"for range {start_ref}..{end_ref}. "
+                    f"Patch/commit correlation failed. Skipping patch assignment for this repo."
+                    # Optional verbose logging:
+                    # f"\n  Patches: {[os.path.basename(p) for p in sorted_patch_paths]}"
+                    # f"\n  Commits: {[c.id[:7] for c in ordered_commits]}"
                 )
-                # Optionally, list files and commits for debugging
-                # self.logger.debug(f"Sorted Patches: {[os.path.basename(p) for p in sorted_patch_paths]}")
-                # self.logger.debug(f"Ordered Commits: {[c.id[:7] for c in ordered_commits]}")
                 continue # Skip to the next repository
 
-            self.logger.debug(f"Successfully matched {len(sorted_patch_paths)} patches to {len(ordered_commits)} commits for {repo_info.repo_name}.")
+            self.logger.debug(f"Count matched for {repo_log_name}: {len(sorted_patch_paths)} patches/commits.")
 
-            # 4. Iterate using zip to correlate patch path and commit detail
-            for patch_file_path, commit_detail in zip(sorted_patch_paths, ordered_commits):
+            # --- 5f. Assign Paths and Identify Special Commits ---
+            for i, (patch_file_path, commit_detail) in enumerate(zip(sorted_patch_paths, ordered_commits)):
                 patch_filename = os.path.basename(patch_file_path)
-                correlation_index = ordered_commits.index(commit_detail) # Get index for logging
-                commit_id = commit_detail.id # Use commit ID directly from the CommitDetail object
 
-                # Calculate the final relative path for the ZIP archive
-                # Filter out None or empty strings from path components
+                # Calculate final relative path (for ZIP archive structure)
                 path_parts = [
                     repo_info.repo_parent,
                     repo_info.relative_path_in_parent,
-                    patch_filename # Use the actual patch filename
+                    patch_filename
                 ]
-                # Use "/".join with filter to handle potential None/empty parts and ensure '/' separator
+                # Use "/" separator, filter None/empty parts
                 final_relative_patch_path = "/".join(filter(None, [p.replace('\\', '/') if p else None for p in path_parts]))
 
                 # Store the final relative path in the CommitDetail
-                # This will apply to *all* commits, including Nebula children,
-                # which will be correctly handled by link_nebula_patches later.
                 commit_detail.patch_path = final_relative_patch_path
-                self.logger.debug(f"Assigned patch path '{final_relative_patch_path}' to commit {commit_id[:7]} in {repo_info.repo_name} based on order.")
-                self.logger.debug(f"Correlated [#{correlation_index + 1}]: Commit {commit_id[:7]} ({repo_info.repo_name}) <-> Patch '{patch_filename}' -> Target: '{final_relative_patch_path}'")
+                self.logger.debug(f"  [#{i+1}] Commit {commit_detail.id[:7]} -> Patch '{patch_filename}' -> Assigned Path: '{final_relative_patch_path}'")
 
-                # --- Check if this commit is "special" (using the current commit_detail) ---
-                # Condition 1: Is the repo path in the list of special source paths?
+                # Check if this commit is "special"
                 repo_path_normalized = repo_info.repo_path.replace('\\', '/') if repo_info.repo_path else None
                 is_from_special_source = repo_path_normalized in special_source_paths
+                has_special_pattern = any(p in commit_detail.message for p in SPECIAL_PATTERNS_LIST)
 
-                # Condition 2: Does the commit message contain any special pattern?
-                has_special_pattern = any(p in commit_detail.message for p in special_patterns_list)
+                if is_from_special_source and has_special_pattern:
+                    special_commit_patch_map[commit_detail.id] = final_relative_patch_path
+                    self.logger.info(f"  Identified special commit: {commit_detail.id[:7]} ({repo_log_name}). Mapped to patch: '{final_relative_patch_path}'")
 
-                is_special = is_from_special_source and has_special_pattern
-
-                if is_special:
-                    # Store the mapping: special commit ID -> final *relative* patch path
-                    # This map is used by link_nebula_patches
-                    special_commit_patch_map[commit_id] = final_relative_patch_path
-                    # Removed duplicate log line, corrected version follows
-                    self.logger.debug(f"Special Commit Check Passed: Commit {commit_id[:7]} from repo {repo_info.repo_name}")
-                    self.logger.info(f"Recorded special commit patch mapping (by order): Commit {commit_detail.id[:7]} ({repo_info.repo_name}) -> '{final_relative_patch_path}'")
-        self.logger.info(f"Finished generating patches. Found {len(special_commit_patch_map)} special commit patches to potentially link to Nebula.")
+        self.logger.info(f"Finished generating patches. Found {len(special_commit_patch_map)} special commit patches.")
         return special_commit_patch_map
-# Removed incorrectly placed log line below, will re-insert correctly
 
 
     def link_nebula_patches(
         self,
         all_repos_config: AllReposConfig,
         special_commit_patch_map: Dict[str, str], # Map: special_commit_id -> final_relative_patch_path
-        nebula_child_to_special_mapping: Dict[str, List[str]] # Map: nebula_child_commit_id -> [special_commit_id, ...]
+        nebula_child_to_special_mapping: Dict[str, List[str]], # Map: nebula_child_commit_id -> [special_commit_id, ...]
+        # TODO: This function needs access to the messages of the special commits.
+        #       Refactor release.py:_process_nebula_mappings to provide this map.
+        special_commit_messages: Dict[str, str] # Map: special_commit_id -> message
     ):
-        """Links Nebula commits to the generated patches of their associated special commits."""
-        """Links Nebula child commits to the generated patches of their associated special commits."""
-        self.logger.info("Starting Nebula child patch linking process...")
+        """
+        Links Nebula child commits to the generated patches of their associated special commits
+        and determines their 'commit_module' based on *all* linked special commits' messages.
 
-        # Find all Nebula child repos (parent is 'nebula')
-        nebula_child_repos = [
-            repo for repo in all_repos_config.all_git_repos()
-            if repo.repo_parent == 'nebula'
-        ]
+        Updates 'patch_path' and 'commit_module' in the CommitDetail objects for Nebula
+        child repositories within 'all_repos_config' in-place.
 
-        if not nebula_child_repos:
-            self.logger.warning("No Nebula child repositories found (parent='nebula'). Skipping patch linking.")
-            return
-        # Check required maps early
+        Args:
+            all_repos_config: The configuration object (potentially modified by release.py).
+            special_commit_patch_map: Map of special commit IDs to their generated relative patch paths.
+            nebula_child_to_special_mapping: Map linking Nebula child commit IDs to lists of special commit IDs.
+            special_commit_messages: Map of special commit IDs to their full commit messages.
+                                     **(Needs to be provided by the caller - see TODO above)**.
+        """
+        self.logger.info("Starting Nebula child patch linking and module assignment...")
+
         if not special_commit_patch_map:
-            self.logger.info("No special commit patches were generated or mapped. Skipping Nebula linking.")
+            self.logger.info("No special commit patches were mapped. Skipping Nebula linking.")
             return
         if not nebula_child_to_special_mapping:
             self.logger.info("No mapping provided between Nebula child commits and special commits. Skipping Nebula linking.")
             return
-
+        if not special_commit_messages:
+             self.logger.warning("Missing special_commit_messages map. Cannot determine commit modules for Nebula children.")
+             # Proceed with path linking only, modules will be None/empty.
 
         linked_count = 0
         unlinked_commits = 0
+        module_assigned_count = 0
 
-        # Iterate through each Nebula child repo found
-        for nebula_child_repo in nebula_child_repos:
-            self.logger.debug(f"Processing links for Nebula child repo: {nebula_child_repo.repo_name}")
-            if not nebula_child_repo.commit_details:
-                self.logger.debug(f"Nebula child repo {nebula_child_repo.repo_name} has no commits in range. Skipping.")
+        # Iterate through Nebula child repos (parent is 'nebula')
+        for repo_info in all_repos_config.all_git_repos():
+            if repo_info.repo_parent != 'nebula':
                 continue
 
-            # Iterate through commits in this Nebula child repo
-            for nebula_commit in nebula_child_repo.commit_details:
-                associated_patch_path = None # Reset for each nebula commit
+            repo_log_name = f"nebula/{repo_info.repo_name}"
+            self.logger.debug(f"Processing links for Nebula child repo: {repo_log_name}")
+
+            if not repo_info.commit_details:
+                self.logger.debug(f"{repo_log_name} has no commits in range. Skipping.")
+                continue
+
+            for nebula_commit in repo_info.commit_details:
+                linked_patch_path: Optional[str] = None # Reset for each nebula commit
+                modules: Set[str] = set() # Use set for unique module names
+
                 special_commit_ids = nebula_child_to_special_mapping.get(nebula_commit.id, [])
 
                 if not special_commit_ids:
-                    self.logger.debug(f"Nebula child commit {nebula_commit.id[:7]} ({nebula_child_repo.repo_name}) has no associated special commits in the map.")
+                    self.logger.debug(f"Nebula commit {nebula_commit.id[:7]} ({repo_log_name}) has no associated special commits.")
                     nebula_commit.patch_path = None # Explicitly set to None
+                    nebula_commit.commit_module = None # Ensure module is None
                     unlinked_commits += 1
                     continue
 
-                # Find the *first* special commit ID that has a patch in the map
+                # Iterate through ALL associated special commits to link path (first found) and gather modules (all found)
+                first_link_found = False
                 for special_commit_id in special_commit_ids:
-                    patch_path = special_commit_patch_map.get(special_commit_id)
-                    if patch_path:
-                        associated_patch_path = patch_path
-                        self.logger.debug(f"Found patch path '{patch_path}' from special commit {special_commit_id[:7]} for Nebula child commit {nebula_commit.id[:7]} ({nebula_child_repo.repo_name}).")
-                        break # Stop after finding the first one
-                        # Log the specific special commit ID that provided the link
-                    else:
-                         self.logger.debug(f"Special commit {special_commit_id[:7]} linked to {nebula_commit.id[:7]}, but no patch path found in special_commit_patch_map.")
+                    # 1. Link Patch Path (from first match)
+                    if not first_link_found:
+                        patch_path = special_commit_patch_map.get(special_commit_id)
+                        if patch_path:
+                            linked_patch_path = patch_path
+                            first_link_found = True
+                            self.logger.debug(f"  Found patch link for {nebula_commit.id[:7]}: '{patch_path}' (from Special Commit {special_commit_id[:7]})")
 
-                # Assign the first found path (or None if none were found)
-                nebula_commit.patch_path = associated_patch_path
+                    # 2. Gather Modules (from all matches)
+                    if special_commit_messages:
+                        special_message = special_commit_messages.get(special_commit_id)
+                        if special_message:
+                            for module_name, pattern in SPECIAL_PATTERNS.items():
+                                if pattern in special_message:
+                                    if module_name not in modules:
+                                        modules.add(module_name)
+                                        self.logger.debug(f"  Added module '{module_name}' for {nebula_commit.id[:7]} (from Special Commit {special_commit_id[:7]})")
+                                    # No break here, collect all modules from all linked commits
+                        else:
+                            self.logger.warning(f"  Message not found for special commit {special_commit_id[:7]} while checking modules for {nebula_commit.id[:7]}.")
+                    # else: handled by initial check
 
-                if associated_patch_path:
+
+                # Assign the final results
+                nebula_commit.patch_path = linked_patch_path
+                nebula_commit.commit_module = sorted(list(modules)) if modules else None # Assign sorted list or None
+
+                if linked_patch_path:
                     linked_count += 1
-                    self.logger.info(f"Linked patch '{associated_patch_path}' to Nebula child commit {nebula_commit.id[:7]} ({nebula_child_repo.repo_name})")
-                    self.logger.info(f"Linked patch '{associated_patch_path}' to Nebula child commit {nebula_commit.id[:7]} ({nebula_child_repo.repo_name}) via Special Commit {special_commit_id[:7]}")
+                    self.logger.info(f"Linked patch '{linked_patch_path}' to Nebula commit {nebula_commit.id[:7]} ({repo_log_name})")
                 else:
-                    self.logger.warning(f"Nebula child commit {nebula_commit.id[:7]} ({nebula_child_repo.repo_name}) had associated special commit IDs ({[sid[:7] for sid in special_commit_ids]}), but none had a resolvable patch path in the map.")
-                    unlinked_commits +=1
+                    unlinked_commits += 1
+                    self.logger.warning(f"Nebula commit {nebula_commit.id[:7]} ({repo_log_name}) had special IDs ({[sid[:7] for sid in special_commit_ids]}) but none had a patch path.")
 
-        self.logger.info(f"Finished Nebula child patch linking. Successfully linked patches for {linked_count} Nebula child commits. Could not resolve links for {unlinked_commits} commits.")
+                if nebula_commit.commit_module:
+                    module_assigned_count += 1
+                    self.logger.info(f"Assigned modules {nebula_commit.commit_module} to Nebula commit {nebula_commit.id[:7]} ({repo_log_name})")
+                elif special_commit_messages: # Only log if messages were expected
+                     self.logger.debug(f"No relevant modules found for Nebula commit {nebula_commit.id[:7]} ({repo_log_name}) based on linked special commits.")
+
+
+        self.logger.info(f"Finished Nebula linking. Linked paths for {linked_count} commits. Failed path links for {unlinked_commits} commits. Assigned modules for {module_assigned_count} commits.")
+
 
     def cleanup_temp_patches(self, patch_config: PatchConfig):
         """Removes the temporary patch directory."""

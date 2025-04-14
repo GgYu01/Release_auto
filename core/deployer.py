@@ -1,10 +1,11 @@
 import os
 import shlex
 import subprocess
-from config.schemas import DeployConfig
-from utils.custom_logger import Logger
-from utils.command_executor import CommandExecutor
+from logging import Logger # Correct import for Logger type hint
 
+from config.schemas import DeployConfig
+from utils.command_executor import CommandExecutor # Assuming CommandExecutor handles execution
+from utils.custom_logger import Logger as CustomLogger # Keep if needed elsewhere
 
 class Deployer:
     def __init__(self, command_executor: CommandExecutor, logger: Logger):
@@ -17,87 +18,99 @@ class Deployer:
 
     def deploy_package(self, local_zip_path: str, deploy_config: DeployConfig) -> bool:
         """
-        Deploys the release package (ZIP file) to the remote server via SCP.
+        Deploys the packaged release archive using SCP.
 
         Args:
-            local_zip_path: The absolute path to the local ZIP file to deploy.
-            deploy_config: Configuration object with SCP details.
+            local_zip_path: The path to the local ZIP file to deploy.
+            deploy_config: Configuration containing SCP connection details.
 
         Returns:
             True if deployment was successful, False otherwise.
         """
-        self.logger.info("Starting deployment process...")
+        self.logger.info(f"Starting deployment of {local_zip_path}...")
 
-        if not os.path.isfile(local_zip_path):
-            self.logger.error(f"Deployment failed: Local package file not found at {local_zip_path}")
+        # --- Input Validation ---
+        if not os.path.exists(local_zip_path):
+            self.logger.error(f"Deployment failed: Local package not found at {local_zip_path}")
             return False
-
-        # Basic validation of config
-        if not all([deploy_config.scp_host, deploy_config.scp_user, deploy_config.scp_remote_path]):
-             self.logger.error("Deployment failed: SCP configuration (host, user, remote_path) is incomplete.")
+        if not os.path.isfile(local_zip_path):
+             self.logger.error(f"Deployment failed: Path {local_zip_path} is not a file.")
              return False
 
-        # Construct the remote target path
-        # Ensure remote path uses forward slashes, even if config uses backslashes
-        remote_path_normalized = deploy_config.scp_remote_path.replace('\\', '/')
-        # Ensure trailing slash if it's meant to be a directory
-        if not remote_path_normalized.endswith('/'):
-            remote_path_normalized += '/'
-        remote_target = f"{deploy_config.scp_user}@{deploy_config.scp_host}:{remote_path_normalized}"
+        if not all([deploy_config.scp_host, deploy_config.scp_user, deploy_config.scp_remote_path]):
+            self.logger.error("Deployment failed: SCP configuration is incomplete (host, user, or remote_path missing).")
+            return False
 
-        # Construct the SCP command arguments carefully
-        scp_command = "scp"
-        # Use '-o StrictHostKeyChecking=no' and '-o UserKnownHostsFile=/dev/null' for automation,
-        # but be aware of the security implications (MITM). Relying on pre-configured keys is better.
-        # For now, assume keys are set up and omit these.
-        scp_args = [
-            "-P", str(deploy_config.scp_port),  # Port option
-            local_zip_path,                    # Source file
-            remote_target                      # Destination
+        # Ensure remote path uses forward slashes and handles potential directory targets
+        remote_path = deploy_config.scp_remote_path.replace('\\', '/')
+        # If it doesn't look like a specific filename, assume it's a directory and append a slash if missing
+        # Note: This heuristic might not cover all cases, but is a common pattern.
+        if not os.path.basename(remote_path) or '.' not in os.path.basename(remote_path):
+             if not remote_path.endswith('/'):
+                 remote_path += '/'
+        # Alternatively, could append the local filename explicitly:
+        # remote_target = f"{remote_path.rstrip('/')}/{os.path.basename(local_zip_path)}"
+
+        # --- Construct SCP Command ---
+        # Use shlex.quote for safety, or pass as a list to CommandExecutor if it supports it
+        scp_command_parts = [
+            "scp",
+            "-P", str(deploy_config.scp_port), # Port must be string
+            local_zip_path, # Already validated path
+            f"{deploy_config.scp_user}@{deploy_config.scp_host}:{remote_path}"
         ]
 
-        # Log a representation without potentially sensitive info if needed
-        self.logger.info(f"Preparing SCP command to transfer {os.path.basename(local_zip_path)} to {deploy_config.scp_host}:{remote_path_normalized}")
-        # More detailed log for debugging:
-        self.logger.debug(f"Executing SCP command: {scp_command} {' '.join(scp_args)}")
+        # Safer to pass as list if CommandExecutor supports it:
+        # command_args = scp_command_parts
+        # command_string = None # Let executor handle joining/quoting if necessary
 
+        # If CommandExecutor expects a single string:
+        command_string = " ".join(shlex.quote(part) for part in scp_command_parts)
+        command_args = None
+
+        self.logger.info(f"Executing SCP command: {' '.join(scp_command_parts)}") # Log unquoted for readability
+
+        # --- Execute SCP Command ---
         try:
-            # Adapt this call based on the actual CommandExecutor interface
-            # Option 1: Assuming execute takes a command name and params dict with list
-            params = {
-                "command_list": [scp_command] + scp_args
-            }
-            result = self.command_executor.execute("scp_transfer", params)
-
-            # Option 2: Assuming execute_shell_command exists and takes a string
-            # command_string = f"{scp_command} {' '.join(scp_args)}"
-            # result = self.command_executor.execute_shell_command(command_string, shell=True) # If shell=True needed
-
-            # Check result based on CommandExecutor's return type (e.g., CompletedProcess)
-            if hasattr(result, 'returncode') and result.returncode != 0:
-                 # CommandExecutor might handle this and raise CalledProcessError instead
-                 self.logger.error(f"SCP deployment failed. Command returned non-zero exit code: {result.returncode}")
-                 self.logger.error(f"SCP stderr: {getattr(result, 'stderr', 'N/A')}")
-                 self.logger.error(f"SCP stdout: {getattr(result, 'stdout', 'N/A')}")
+            # Choose the appropriate execution method based on CommandExecutor capabilities
+            if command_args:
+                 # Ideal: Pass list of arguments directly
+                 result = self.command_executor.execute(command_args, command_type='list_command') # Hypothetical type
+            elif command_string:
+                 # Fallback: Pass quoted string
+                 result = self.command_executor.execute(command_string, command_type='shell_command') # Assuming this type exists
+            else:
+                 self.logger.error("Internal error: Could not determine command format for CommandExecutor.")
                  return False
 
-            self.logger.info("SCP command executed successfully.")
-            self.logger.debug(f"SCP stdout: {getattr(result, 'stdout', 'N/A')}")
-            self.logger.debug(f"SCP stderr: {getattr(result, 'stderr', 'N/A')}")
-            self.logger.info(f"Successfully deployed {os.path.basename(local_zip_path)} to {deploy_config.scp_host}:{remote_path_normalized}")
-            return True
+            # --- Check Result ---
+            # Adapt based on what CommandExecutor.execute returns (e.g., return code, CompletedProcess object)
+            # Assuming it raises CalledProcessError on failure or returns a status code/object
+            # Example check if it returns a simple success/failure boolean or status code:
+            if isinstance(result, bool) and result:
+                self.logger.info(f"SCP command executed successfully. Deployment presumed successful.")
+                return True
+            elif isinstance(result, int) and result == 0:
+                 self.logger.info(f"SCP command executed with return code 0. Deployment presumed successful.")
+                 return True
+            elif hasattr(result, 'returncode') and result.returncode == 0:
+                 self.logger.info(f"SCP command process completed with return code 0. Deployment presumed successful.")
+                 return True
+            else:
+                 # Attempt to get stderr if available from result
+                 stderr_info = getattr(result, 'stderr', 'No stderr captured') if result else 'Execution failed early'
+                 self.logger.error(f"SCP command execution failed. Result: {result}. Stderr: {stderr_info}")
+                 return False
 
-        except subprocess.CalledProcessError as e: # If CommandExecutor raises this
-            self.logger.error(f"SCP deployment failed. Return code: {e.returncode}")
-            self.logger.error(f"SCP stderr: {getattr(e, 'stderr', 'N/A')}")
-            self.logger.error(f"SCP stdout: {getattr(e, 'stdout', 'N/A')}")
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"SCP command failed with return code {e.returncode}. Error: {e.stderr or e.stdout or e}", exc_info=True)
             return False
-        except ValueError as e: # Catch config errors from CommandExecutor setup
-             self.logger.error(f"Configuration error during SCP execution setup: {e}")
-             return False
-        except FileNotFoundError: # If scp command itself is not found by the executor
-             self.logger.error(f"SCP command '{scp_command}' not found. Ensure SCP client is installed and in PATH.")
-             return False
-        except Exception as e: # Catch other potential errors from CommandExecutor or SCP
-            self.logger.error(f"An unexpected error occurred during deployment: {e}", exc_info=True)
+        except FileNotFoundError:
+            self.logger.error(f"Deployment failed: 'scp' command not found. Ensure SCP client is installed and in PATH.")
+            return False
+        except ValueError as e: # Catch potential config issues passed down
+            self.logger.error(f"Deployment failed due to a value error: {e}", exc_info=True)
+            return False
+        except Exception as e:
+            self.logger.critical(f"An unexpected error occurred during deployment: {e}", exc_info=True)
             return False

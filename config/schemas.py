@@ -7,7 +7,7 @@ class CommitDetail:
     id: str
     author: str
     message: str
-    patch_path: Optional[Any] = None # Can be str or List[str] for Nebula
+    patch_path: Optional[str] = None # Stores the relative path to the patch file
     commit_module: Optional[List[str]] = None
 
 
