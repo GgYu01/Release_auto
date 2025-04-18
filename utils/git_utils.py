@@ -202,6 +202,30 @@ class GitOperator:
         except Exception as e:
             self.logger.error(f"Unexpected error getting commit message for {commit_hash} in {repository_path}: {e}")
             return None
+    def get_latest_commit_id(self, repository_path: str, branch_name: Optional[str] = None) -> Optional[str]:
+        try:
+            ref_to_parse = branch_name if branch_name else "HEAD"
+            self.logger.info(f"Getting latest commit ID for ref '{ref_to_parse}' in {repository_path}")
+            # Use rev-parse which is generally faster for just getting the commit ID
+            args = [ref_to_parse]
+            result = self._execute_git(repository_path, "rev-parse", args)
+            commit_id = result.stdout.strip()
+            if not commit_id:
+                 self.logger.warning(f"Git rev-parse for '{ref_to_parse}' in {repository_path} returned empty output.")
+                 return None
+            self.logger.info(f"Successfully retrieved latest commit ID for '{ref_to_parse}': {commit_id}")
+            return commit_id
+        except subprocess.CalledProcessError as e:
+            # Handle cases where the branch might not exist or other git errors
+            self.logger.error(f"Failed to get latest commit ID for ref '{ref_to_parse}' in {repository_path}: {e.stderr}")
+            return None
+        except ValueError as e: # Catch errors from _execute_git if command_executor fails validation
+            self.logger.error(f"Configuration error getting latest commit ID in {repository_path}: {e}")
+            return None
+        except Exception as e:
+            self.logger.error(f"Unexpected error getting latest commit ID for '{ref_to_parse}' in {repository_path}: {e}", exc_info=True)
+            return None
+
 
     def get_remote_url(self, repository_path: str, remote_name: str) -> Optional[str]:
         try:

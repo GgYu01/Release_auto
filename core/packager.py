@@ -1,10 +1,10 @@
 import os
 import zipfile
-from typing import Dict
-from logging import Logger # Correct import for Logger type hint
+from typing import Dict, Optional, List # Added List
+from logging import Logger
 
-from config.schemas import AllReposConfig, PackageConfig, GitRepoInfo, CommitDetail
-from utils.custom_logger import Logger as CustomLogger # Keep if needed elsewhere, but prefer type hint
+from config.schemas import AllReposConfig, PackageConfig, GitRepoInfo, CommitDetail, ExcelConfig
+from utils.custom_logger import Logger as CustomLogger
 
 class ReleasePackager:
     def __init__(self, logger: Logger):
@@ -15,28 +15,17 @@ class ReleasePackager:
     def package_release(
         self,
         all_repos_config: AllReposConfig,
-        version_info: Dict, # Expects 'latest_tag'
-        temp_patch_dir: str,
+        version_info: Dict,
+        temp_patch_dir: str, # Still potentially needed for context/debugging, but not for finding source paths
         package_config: PackageConfig,
-        output_zip_path: str # The full path including filename
+        output_zip_path: str,
+        patch_details_map: Dict[str, str], # New: Map relative arcname -> absolute source path
+        excel_config: Optional[ExcelConfig],
+        generated_excel_path: Optional[str]
     ) -> bool:
-        """
-        Collects generated patch files into a structured ZIP archive.
-
-        Args:
-            all_repos_config: Configuration containing repo info and commit details with patch paths.
-            version_info: Dictionary containing the 'latest_tag'.
-            temp_patch_dir: The base directory where temporary repo patch folders exist.
-            package_config: Configuration for packaging details.
-            output_zip_path: The full path where the final ZIP archive should be saved.
-
-        Returns:
-            True if packaging was successful, False otherwise.
-        """
         self.logger.info(f"Starting release packaging process for output: {output_zip_path}")
 
         try:
-            # Ensure the output directory exists
             output_dir = os.path.dirname(output_zip_path)
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
@@ -45,51 +34,59 @@ class ReleasePackager:
             with zipfile.ZipFile(output_zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                 self.logger.info(f"Opened ZIP file for writing: {output_zip_path}")
                 packaged_files_count = 0
+                missing_source_files = 0
 
                 for repo_info in all_repos_config.all_git_repos():
                     if not repo_info.commit_details:
                         self.logger.debug(f"No commits found for {repo_info.repo_name}, skipping.")
                         continue
 
-                    self.logger.debug(f"Checking commits for repo: {repo_info.repo_name} (Parent: {repo_info.repo_parent})")
+                    repo_log_name = f"{repo_info.repo_parent}/{repo_info.repo_name}" if repo_info.repo_parent else repo_info.repo_name
+                    self.logger.debug(f"Checking commits for repo: {repo_log_name}")
+
                     for commit_detail in repo_info.commit_details:
                         if commit_detail.patch_path:
-                            # commit_detail.patch_path already contains the desired relative path within the zip (arcname)
-                            arcname = commit_detail.patch_path
+                            arcname = commit_detail.patch_path # This is the target path in the ZIP
 
-                            # Construct the source path in the temporary directory structure
-                            # Use slugified names for the temporary folder structure
-                            repo_parent_slug = repo_info.repo_parent.replace('/', '_') if repo_info.repo_parent else 'no_parent'
-                            repo_name_slug = repo_info.repo_name.replace('/', '_')
-                            patch_filename = os.path.basename(arcname) # Get filename from the relative path
+                            # Find the actual source file path using the map
+                            source_path = patch_details_map.get(arcname)
 
-                            source_patch_file_path = os.path.join(
-                                temp_patch_dir,
-                                repo_parent_slug,
-                                repo_name_slug,
-                                patch_filename
-                            )
+                            self.logger.debug(f"Attempting to add patch: Arcname='{arcname}', Expected Source='{source_path}'")
 
-                            self.logger.debug(f"Attempting to add patch: Source='{source_patch_file_path}', Arcname='{arcname}'")
-
-                            if os.path.exists(source_patch_file_path):
-                                zip_file.write(source_patch_file_path, arcname=arcname)
+                            if source_path and os.path.exists(source_path):
+                                zip_file.write(source_path, arcname=arcname)
                                 packaged_files_count += 1
                                 self.logger.debug(f"Added file to ZIP: {arcname}")
                             else:
-                                # Log an error if the source patch file is missing, but continue packaging others
-                                self.logger.error(f"Source patch file not found, cannot add to ZIP: {source_patch_file_path} (Expected Arcname: {arcname})")
-                        # else: # Log only if debugging is necessary
-                            # self.logger.debug(f"Commit {commit_detail.id[:7]} in {repo_info.repo_name} has no patch_path. Skipping.")
+                                # Log distinct error for missing source file, do not raise
+                                missing_source_files += 1
+                                if not source_path:
+                                     self.logger.error(f"Source patch file path not found in patch_details_map for Arcname: {arcname}. Cannot add to ZIP.")
+                                else: # source_path exists in map, but file not found on disk
+                                     self.logger.error(f"Source patch file does not exist at the expected location: {source_path} (for Arcname: {arcname}). Cannot add to ZIP.")
 
-                self.logger.info(f"Successfully added {packaged_files_count} patch files to the archive.")
+                self.logger.info(f"Finished processing patch files. Added {packaged_files_count} files to the archive.")
+                if missing_source_files > 0:
+                     self.logger.warning(f"Could not find source files for {missing_source_files} patches. Check previous logs for details.")
+
+
+                # --- Add Excel Report if generated ---
+                if excel_config and excel_config.enabled and generated_excel_path:
+                    self.logger.info(f"Checking for generated Excel file: {generated_excel_path}")
+                    if os.path.exists(generated_excel_path):
+                        excel_arcname = excel_config.output_filename # Use filename from config
+                        self.logger.info(f"Adding Excel report to ZIP archive as: {excel_arcname}")
+                        zip_file.write(generated_excel_path, arcname=excel_arcname)
+                    else:
+                        self.logger.warning(f"Excel report was enabled but file not found at {generated_excel_path}. Skipping inclusion in ZIP.")
+                elif excel_config and excel_config.enabled:
+                     self.logger.warning("Excel report was enabled, but no valid path provided (generation likely failed). Skipping inclusion in ZIP.")
 
             self.logger.info(f"Release package created successfully: {output_zip_path}")
             return True
 
         except (IOError, OSError, zipfile.BadZipFile) as e:
             self.logger.error(f"Failed to create or write to ZIP file {output_zip_path}: {e}", exc_info=True)
-            # Attempt to clean up potentially corrupted zip file
             if os.path.exists(output_zip_path):
                 try:
                     os.remove(output_zip_path)

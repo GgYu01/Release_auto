@@ -101,6 +101,16 @@ class DeployConfig:
     scp_port: int = 22
 
 
+# New dataclass for Excel reporting configuration
+@dataclass
+class ExcelConfig:
+    enabled: bool
+    output_filename: str
+    tester_name: str
+    mtk_owner_serial: str
+    zircon_repo_name: str = "zircon"
+    garnet_repo_name: str = "garnet"
+
 @dataclass
 class AllReposConfig:
     repo_configs: Dict[str, RepoConfig] = field(default_factory=dict)
@@ -108,6 +118,7 @@ class AllReposConfig:
     package_config: PackageConfig = field(default_factory=PackageConfig) # Integrated
     deploy_config: Optional[DeployConfig] = None # Integrated (Optional)
     patch_config: PatchConfig = field(default_factory=PatchConfig) # Integrated
+    excel_config: Optional[ExcelConfig] = None # Configuration for Excel report generation
 
     def all_git_repos(self):
         for repo_config in self.repo_configs.values():

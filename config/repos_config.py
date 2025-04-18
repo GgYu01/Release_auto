@@ -1,5 +1,5 @@
 import logging
-from config.schemas import RepoConfig, AllReposConfig
+from config.schemas import RepoConfig, AllReposConfig, ExcelConfig # Import ExcelConfig
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +90,16 @@ alps_config = RepoConfig(
     default_generate_patch=True,
     all_branches=["release-spm.mt8678_2024_1230"],
 )
+# Configuration for Excel report generation
+excel_config = ExcelConfig(
+    enabled=True, # Enable report generation by default
+    output_filename="ReleaseNotes.xlsx", # Default filename
+    tester_name="Default Tester", # Placeholder tester name
+    mtk_owner_serial="000000", # Placeholder serial
+    zircon_repo_name="zircon", # Default zircon repo name
+    garnet_repo_name="garnet" # Default garnet repo name
+)
+
 
 all_repos_config = AllReposConfig(
     repo_configs={
@@ -101,5 +111,6 @@ all_repos_config = AllReposConfig(
         # "grpower": grpower_config,
         # "grt_be": grt_be_config,
     },
-    version_source_repo_name="grt"
+    version_source_repo_name="grt",
+    excel_config=excel_config # Assign the excel config instance
 )
