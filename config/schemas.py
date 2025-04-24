@@ -157,7 +157,6 @@ class BuildGitConfig:
     commit_message_sdk: str = "chore(sdk): update nebula-sdk artifacts"
     commit_message_nebula: str = "chore(nebula): sync prebuilt images"
     commit_message_tee: str = "chore(tee): update TEE kernel binaries"
-    remote_name: str = "origin"
     remote_branch_nebula: str = "release-spm.mt8678_2024_1230"
     remote_branch_tee: str = "release-spm.mt8678_2024_1230"
     push_template: str = "{remote_name} HEAD:refs/for/{remote_branch}"
@@ -199,7 +198,7 @@ class BuildConfig:
                 FileCopyOperation(source_path="vmm/nbl_vm_srv/data/vm_srv_cfg_8678.pb.txt", destination_path="vm_srv_cfg_8678.pb.txt"),
                 FileCopyOperation(source_path="vmm/nbl_vmm/data/uos_mtk8678/uos_bootloader_lk2.pb.txt", destination_path="uos_bootloader_lk2.pb.txt"),
                 FileCopyOperation(source_path="vmm/out/symbols/*", destination_path="symbols/", is_wildcard=True),
-                FileCopyOperation(source_path="vmm/nbl_vm_srv/data/vm_audio_cfg.pb.txt", destination_path="vm_audio_cfg.pb.txt"),
+                FileCopyOperation(source_path="vmm/nbl_vmm/data/vm_audio_cfg.pb.txt", destination_path="vm_audio_cfg.pb.txt"),
                 FileCopyOperation(source_path="vmm/nbl_vm_srv/data/nbl_ta_monitor", destination_path="nbl_ta_monitor"),
             ]
         ),

@@ -105,11 +105,10 @@ all_repos_config = AllReposConfig(
     repo_configs={
         "grt": grt_config,
         "nebula": nebula_config,
-        # "alps": alps_config, # Add ALPS config
-        # "yocto": yocto_config, # Add Yocto config
-        # Add other configs like grpower, grt_be if they should be part of the flow
-        # "grpower": grpower_config,
-        # "grt_be": grt_be_config,
+        "alps": alps_config,
+        "yocto": yocto_config,
+        "grpower": grpower_config,
+        "grt_be": grt_be_config,
     },
     version_source_repo_name="grt",
     excel_config=excel_config # Assign the excel config instance
